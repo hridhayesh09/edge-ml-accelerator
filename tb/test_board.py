@@ -1,0 +1,61 @@
+"""Smoke test of the exact board build (de10lite_top) at the real 115200 baud.
+
+Slower than the other suites because real baud means ~434 clocks per bit,
+so it only does a PING and one small matrix multiply.
+"""
+
+import sys
+from pathlib import Path
+
+import cocotb
+import numpy as np
+from cocotb.clock import Clock
+from cocotb.triggers import ClockCycles, ReadOnly, Timer
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "host"))
+import accel_proto as P  # noqa: E402
+
+from uart_model import UartSink, UartSource  # noqa: E402
+
+BIT_NS = 8681            # 1 / 115200 baud, rounded to the nearest ns
+HEX_1 = 0b11111001      # "1" on an active-low 7-segment display
+
+
+@cocotb.test()
+async def board_ping_and_matmul(dut):
+    Clock(dut.clk, 20, unit="ns", impl="gpi").start()
+    dut.key0_n.value = 1
+    src = UartSource(dut.uart_rx, BIT_NS)
+    sink = UartSink(dut.uart_tx, BIT_NS)
+    await ClockCycles(dut.clk, 40)          # power-on reset finishes
+    cocotb.start_soon(sink.run())
+
+    # PING
+    await src.send(P.enc_ping())
+    info = P.dec_ping(await sink.recv(P.PING_REPLY_LEN, timeout_ns=BIT_NS * 100))
+    assert info["n"] == 8
+
+    # One small matmul
+    rng = np.random.default_rng(3)
+    a = rng.integers(-128, 128, (2, 8)).astype(np.int8)
+    w = rng.integers(-128, 128, (8, 8)).astype(np.int8)
+    await src.send(P.enc_load_w(w) + P.enc_load_a(a) + P.enc_run())
+    cycles = P.dec_run(await sink.recv(P.RUN_REPLY_LEN, timeout_ns=BIT_NS * 200))
+    assert cycles == 2 + 16
+    await src.send(P.enc_read())
+    c = P.dec_results(await sink.recv(P.read_len(2), timeout_ns=BIT_NS * 1000), 2)
+    assert np.array_equal(c, P.golden_matmul(a, w))
+
+    # Board status: run counter shows 1, no error LED
+    await ReadOnly()
+    assert int(dut.hex0.value) == HEX_1, f"HEX0 = {int(dut.hex0.value):08b}"
+    assert (int(dut.ledr.value) >> 9) & 1 == 0, "error LED is on"
+
+    # KEY[0] reset clears the run counter
+    await Timer(1, unit="us")
+    dut.key0_n.value = 0
+    await ClockCycles(dut.clk, 10)
+    dut.key0_n.value = 1
+    await ClockCycles(dut.clk, 10)
+    await ReadOnly()
+    assert int(dut.hex0.value) == 0b11000000, "reset did not clear the counter"

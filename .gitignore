@@ -1,0 +1,25 @@
+# simulation
+tb/sim_build/
+results.xml
+*.vcd
+*.fst
+__pycache__/
+
+# Quartus build output
+quartus/db/
+quartus/incremental_db/
+quartus/output_files/
+quartus/*.qws
+quartus/*.rpt
+quartus/*.summary
+quartus/*.smsg
+quartus/*.jdi
+quartus/*.sld
+quartus/*.pin
+quartus/*.done
+
+# downloaded dataset
+host/data/
+
+# Python virtual environment
+.venv/
