@@ -64,11 +64,12 @@ class _Base:
         wall = time.perf_counter() - t0
         return c, summarize(st, wall)
 
-    def infer(self, images_u8, with_logits=False):
+    def infer(self, images_u8, with_logits=False, compress=True):
         """Classify MNIST images with the network running entirely on the
-        board. Returns (digits, logits or None, stats dict)."""
+        board (compressed images by default). Returns (digits, logits or None,
+        stats dict)."""
         t0 = time.perf_counter()
-        digits, logits, st = self.run_program(P.infer_program(images_u8, with_logits))
+        digits, logits, st = self.run_program(P.infer_program(images_u8, with_logits, compress))
         st["wall_time_s"] = time.perf_counter() - t0
         st["compute_time_s"] = st["compute_cycles"] / CLK_HZ
         return digits, logits, st
@@ -194,6 +195,23 @@ class SimAccelerator(_Base):
                     frame = (bytearray([P.RSP_INFER]) + bytes(digits.astype(np.uint8))
                              + P.infer_cycles(b).to_bytes(4, "little"))
                 out += frame + bytes([P.checksum(frame)])
+            elif cmd == P.CMD_INFER_RLE:
+                b = tx[i] + 1
+                j = i + 1
+                pixels = bytearray()
+                while len(pixels) < b * P.IN_PIX and j < len(tx) - 1:
+                    byte = tx[j]
+                    pixels += bytes((byte & 0x7F) + 1) if byte & 0x80 else bytes([byte])
+                    j += 1
+                ok = len(pixels) == b * P.IN_PIX and P.checksum(tx[i:j]) == tx[j]
+                i = j + 1
+                frame = bytearray([P.RSP_BAD]) + bytes(b + 4)
+                if ok:
+                    digits, logits = self._mnist_q(np.frombuffer(bytes(pixels), np.uint8).reshape(b, -1))
+                    self.logits = logits
+                    frame = (bytearray([P.RSP_INFER]) + bytes(digits.astype(np.uint8))
+                             + P.infer_cycles(b).to_bytes(4, "little"))
+                out += frame + bytes([P.checksum(frame)])
             elif cmd == P.CMD_LOGITS:
                 res = self.logits.astype("<i4").tobytes()
                 out += res + bytes([P.checksum(res)])
@@ -214,6 +232,17 @@ class SimAccelerator(_Base):
             self.model = dict(np.load(Path(__file__).with_name("mnist_int8.npz")))
         pred, _, acc2 = int8_forward(images, self.model, numpy_int_matmul)
         return pred, acc2
+
+    def _mnist_q(self, images_q):
+        """Same as _mnist, for already-quantized pixels (INFER_RLE)."""
+        # quantize_input is a fixed table; find raw values that map to each
+        # quantized one so the shared reference path can be reused exactly
+        from mnist_common import quantize_input
+        table = quantize_input(np.arange(256, dtype=np.uint8)).view(np.uint8)
+        inverse = np.zeros(128, dtype=np.uint8)
+        for raw in range(255, -1, -1):
+            inverse[table[raw]] = raw
+        return self._mnist(inverse[images_q])
 
 
 def open_accelerator(port, baud=2_000_000):

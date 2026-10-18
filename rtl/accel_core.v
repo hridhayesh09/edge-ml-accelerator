@@ -14,6 +14,11 @@
 //   'I' 0x49  INFER       + (B-1) + B*784 raw pixels (uint8) + checksum
 //                         -> runs the whole MNIST network on chip, replies
 //                            D1 + B digits + 4-byte cycle count + checksum
+//   'J' 0x4A  INFER_RLE   + (B-1) + compressed quantized pixels + checksum, same reply
+//                         as INFER. Byte with the top bit set = (low 7 bits + 1)
+//                         zero pixels; any other byte = one pixel value 0..127.
+//                         MNIST images shrink about 4.4x, so the serial link
+//                         (the bottleneck) carries far fewer bytes.
 //   'L' 0x4C  READ_LOGITS -> replies B*10 int32 logits of the last INFER + checksum
 //   other                 -> replies EE
 //
@@ -80,7 +85,7 @@ module accel_core #(
     localparam WW = $clog2(NN);
     localparam BW = $clog2(N);          // byte-in-row index width
     localparam OB = $clog2(4 * N);      // byte-in-output-row index width
-    localparam [7:0] VERSION   = 8'd3;
+    localparam [7:0] VERSION   = 8'd4;
     localparam [7:0] N_BYTE    = N;
     localparam [7:0] MLAST_MAX = MAX_M - 1;
 
@@ -104,6 +109,7 @@ module accel_core #(
     localparam CMD_READ    = 8'h43;  // 'C'
     localparam CMD_INFER   = 8'h49;  // 'I'
     localparam CMD_LOGITS  = 8'h4C;  // 'L'
+    localparam CMD_INFER_RLE = 8'h4A; // 'J'
 
     localparam RSP_PING  = 8'hA5;
     localparam RSP_DONE  = 8'hD0;
@@ -181,6 +187,8 @@ module accel_core #(
     reg [BW-1:0]    px_lane  = 0;      // byte within the image-buffer word
     reg [8*N-1:0]   px_word  = 0;      // assembles one word of quantized pixels
     reg             infer_ok = 0;      // checksum of this INFER was good
+    reg             rle      = 0;      // this INFER's pixels are compressed
+    reg [6:0]       zrun     = 0;      // zero pixels still to emit from a run byte
 
     reg             layer    = 0;      // 0 = layer 1, 1 = layer 2
     reg [7:0]       kt       = 0;      // input slice
@@ -287,7 +295,16 @@ module accel_core #(
     wire   loading = (state == S_LOAD_W || state == S_ALEN || state == S_LOAD_A ||
                       state == S_CSUM_W || state == S_CSUM_A ||
                       state == S_ILEN || state == S_IPIX || state == S_ICSUM);
-    assign rx_rd = !rx_empty && (state == S_IDLE || loading);
+    // while a zero run is being expanded, don't read the next byte yet
+    assign rx_rd = !rx_empty && (state == S_IDLE || loading) && !(state == S_IPIX && zrun != 0);
+
+    // The pixel the receive logic stores this cycle (S_IPIX): from a zero
+    // run, a compressed literal (already quantized), or a raw pixel through
+    // the quantizer table.
+    wire       px_emit = (state == S_IPIX) && (zrun != 0 || rx_rd);
+    wire [7:0] px_val  = (zrun != 0)  ? 8'd0 :
+                         rle          ? (rx_data[7] ? 8'd0 : rx_data) :
+                                        qlut[rx_data];
 
     wire       engine   = (state >= S_E_TILE && state <= S_E_ARG) || state == S_E_PDRN;
     wire [8*N-1:0] feed_data = !engine ? amem_rdata : (layer ? hid_rdata : img_rdata);
@@ -491,8 +508,9 @@ module accel_core #(
                             csum    <= 0;
                             state   <= S_RD_ADDR;
                         end
-                        CMD_INFER: begin
+                        CMD_INFER, CMD_INFER_RLE: begin
                             csum  <= 0;
+                            rle   <= (rx_data == CMD_INFER_RLE);
                             state <= S_ILEN;
                         end
                         CMD_LOGITS: begin
@@ -600,27 +618,38 @@ module accel_core #(
                     px_cnt    <= 0;
                     px_img    <= 0;
                     px_lane   <= 0;
+                    zrun      <= 0;
                     img_waddr <= {$clog2(IBD){1'b1}};   // first write lands on word 0
                     state     <= S_IPIX;
                 end
 
                 // Pixels arrive image by image, so image-buffer words fill in
                 // address order: just count up.
-                S_IPIX: if (rx_rd) begin
-                    csum <= csum + rx_data;
+                // One pixel per clock at most: from a byte just read, or from
+                // a zero run still being expanded (then no byte is read).
+                S_IPIX: if (px_emit) begin
+                    if (rx_rd) begin
+                        csum <= csum + rx_data;
+                        if (rle && rx_data[7]) zrun <= rx_data[6:0];   // zeros still to come
+                    end else begin
+                        zrun <= zrun - 1'b1;
+                    end
                     if (px_lane == N - 1) begin
                         img_we    <= 1'b1;
                         img_waddr <= img_waddr + 1'b1;
-                        img_wdata <= {qlut[rx_data], px_word[8*(N-1)-1:0]};
+                        img_wdata <= {px_val, px_word[8*(N-1)-1:0]};
                         px_lane   <= 0;
                     end else begin
-                        px_word[8*px_lane +: 8] <= qlut[rx_data];
+                        px_word[8*px_lane +: 8] <= px_val;
                         px_lane <= px_lane + 1'b1;
                     end
                     if (px_cnt == IN_PIX - 1) begin
                         px_cnt <= 0;
                         px_img <= px_img + 1'b1;
-                        if (px_img == b_last) state <= S_ICSUM;
+                        if (px_img == b_last) begin
+                            zrun  <= 0;                  // a run can't spill past the end
+                            state <= S_ICSUM;
+                        end
                     end else begin
                         px_cnt <= px_cnt + 1'b1;
                     end

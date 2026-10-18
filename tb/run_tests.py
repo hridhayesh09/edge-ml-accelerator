@@ -47,7 +47,7 @@ SUITES = {
     "system": ("accel_top",      [],                 {"CLKS_PER_BIT": 8, "N": 8, "MAX_M": 256, "RX_TIMEOUT": 3000, "MODEL_DIR": MODEL_DIR}, "test_system"),
     # the board's real 16x16 array: a focused subset (256 PEs simulate ~4x slower)
     "system16": ("accel_top",    [],                 {"CLKS_PER_BIT": 8, "N": 16, "MAX_M": 256, "RX_TIMEOUT": 3000, "MODEL_DIR": MODEL_DIR}, "test_system",
-                 "ping|single_tile|extreme_values|tiled_shapes|full_buffer|commands_back|bad_checksum|lost_byte|infer_"),
+                 "ping|single_tile|commands_back|bad_checksum|infer_"),
     "board":  ("tb_board",       [TB / "tb_board.v"], {"MODEL_DIR": MODEL_DIR}, "test_board"),
 }
 

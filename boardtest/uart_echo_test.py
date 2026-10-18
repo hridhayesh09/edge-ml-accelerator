@@ -17,14 +17,15 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", required=True)
     ap.add_argument("--bytes", type=int, default=4096)
+    ap.add_argument("--baud", type=int, default=115200)
     args = ap.parse_args()
 
-    with serial.Serial(args.port, 115200, timeout=2) as s:
+    with serial.Serial(args.port, args.baud, timeout=2) as s:
         s.reset_input_buffer()
         sent = os.urandom(args.bytes)
         got = bytearray()
-        for i in range(0, len(sent), 64):           # small chunks: never overrun
-            chunk = sent[i:i + 64]
+        for i in range(0, len(sent), 256):          # chunks the echo FIFO-less path keeps up with
+            chunk = sent[i:i + 256]
             s.write(chunk)
             got += s.read(len(chunk))
 

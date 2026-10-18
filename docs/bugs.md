@@ -109,3 +109,20 @@ Format: **symptom → cause → fix → lesson**.
   Result: 132 DSP multipliers, 59% logic, 152/182 M9K, 66.9 MHz.
 - **Lesson:** resource counts aren't the whole story; placement rules matter. Check the fitter
   report, and don't trust synthesis hints without confirming they took effect.
+
+### 6. Faster-baud experiment hung the USB-serial driver (COM8 locked)
+- **Goal:** go above 2 Mbaud. The CH343 bridge derives baud from 48 MHz and the FPGA from 50 MHz,
+  so 2 Mbaud is the fastest rate that is exact on both sides; higher rates are off by a few %.
+  An echo design (`boardtest/rtl/uart_echo_top.v`) was built at 3.125, 4.17, 5 and 6 Mbaud
+  (6 Mbaud from a 48 MHz PLL clock) to measure error rates on the real link.
+- **Symptom 1:** every rate "failed". Cause: the script pointed at the wrong bitstream folder, so
+  the board was never reprogrammed and was still running the accelerator. Fix: correct path, and
+  stop instead of testing when programming fails.
+- **Symptom 2:** after that, the test hung and COM8 stayed locked ("Access is denied"). An earlier
+  killed test process was stuck inside the CH343 driver after asking for 3.125 Mbaud. Restarting
+  the device needs admin rights, so it needs a physical replug.
+- **Decision:** stay at 2 Mbaud (exact and proven) and cut the bytes instead: compressed images
+  (INFER_RLE, 4.4x fewer bytes).
+- **Lessons:** make test scripts fail loudly when a setup step fails, because silent setup
+  failures produce convincing-looking wrong results. And probe unusual settings on hardware
+  carefully: a driver can wedge in a way only a replug fixes.

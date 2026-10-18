@@ -285,14 +285,20 @@ async def infer_matches_numpy(dut):
     NumPy INT8 reference bit for bit, and the cycle count matches the formula."""
     tb = SystemTB(dut)
     await tb.start()
-    for b, seed in ((1, 1), (5, 2)):
-        images = make_images(b, seed)
-        digits, logits, st = await tb.run_program(P.infer_program(images, with_logits=True))
+    edge = np.zeros((2, 784), dtype=np.uint8)
+    edge[1, :] = np.arange(784) % 255 + 1            # no zero pixels at all
+    cases = [(make_images(1, 1), False), (make_images(5, 2), True),
+             (edge, True), (make_images(3, 4), False)]   # raw and compressed INFER
+    for images, compress in cases:
+        b = images.shape[0]
+        digits, logits, st = await tb.run_program(
+            P.infer_program(images, with_logits=True, compress=compress))
         ref_pred, ref_logits = mnist_reference(images)
         assert np.array_equal(logits, ref_logits), f"logits differ:\n{logits}\n{ref_logits}"
         assert np.array_equal(digits, ref_pred), (digits, ref_pred)
         assert st["compute_cycles"] == P.infer_cycles(b), (st["compute_cycles"], P.infer_cycles(b))
-        dut._log.info(f"INFER B={b}: digits {digits.tolist()}, {st['compute_cycles']} cycles")
+        dut._log.info(f"INFER B={b} compressed={compress}: digits {digits.tolist()}, "
+                      f"{st['compute_cycles']} cycles, {st['bytes_sent']} bytes sent")
 
 
 @cocotb.test()

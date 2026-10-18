@@ -7,13 +7,14 @@ Commands are ASCII letters so they are easy to spot in a serial terminal.
 
 | Command | Byte | Data sent after it | Board replies with |
 | --- | --- | --- | --- |
-| PING | `P` 0x50 | none | 4 bytes: `A5`, N (16 on the board), MAX_M-1 (255), version (3). The host sizes its tiles from N |
+| PING | `P` 0x50 | none | 4 bytes: `A5`, N (16 on the board), MAX_M-1 (255), version (4). The host sizes its tiles from N |
 | LOAD_W | `W` 0x57 | 64 bytes: int8 weights, row-major `W[k][n]`, then 1 checksum byte | nothing |
 | LOAD_A | `A` 0x41 | 1 byte M-1, then M x 8 bytes: int8 activations, row-major `A[m][k]`, then 1 checksum byte | nothing |
 | RUN | `R` 0x52 | none | 5 bytes: `D0` + uint32 cycle count, or `EC 00 00 00 00` if refused |
 | RUN_ACC | `U` 0x55 | none | 5 bytes: `D0` + uint32 cycle count, or `EC 00 00 00 00` if refused |
 | READ_C | `C` 0x43 | none | M x 8 int32 results, row-major `C[m][n]`, 4 bytes each, then 1 checksum byte |
 | INFER | `I` 0x49 | 1 byte B-1, then B x 784 raw pixels (uint8, 0..255), then 1 checksum byte. B = 1..32 | `D1`, B digits (0..9), uint32 cycle count, checksum. `EC` instead of `D1` (digits and count zero) if the checksum was wrong |
+| INFER_RLE | `J` 0x4A | 1 byte B-1, then the B images compressed (see below), then 1 checksum byte | same as INFER |
 | READ_LOGITS | `L` 0x4C | none | B x 10 int32 logits of the last INFER, row-major, then 1 checksum byte |
 | anything else | | | 1 byte: `EE` |
 
@@ -47,6 +48,21 @@ What the board does for a batch of B images:
 The cycle count is exact (checked in the tests): each weight tile takes `3N + B + 2` cycles,
 each finished output slice `B * (N + 4)`, and the argmax `11 * B`. On the 16x16 board a batch
 of 32 takes 19,952 cycles = 0.40 ms at 50 MHz (12.5 us per image).
+
+## Compressed images: INFER_RLE (version 4)
+
+The serial link is the bottleneck (99%+ of end-to-end time), so INFER_RLE sends fewer bytes.
+The host quantizes pixels with the same table the board uses (0..255 -> 0..127), then encodes
+each image on its own:
+
+- a byte with the top bit set means `(byte & 0x7F) + 1` zero pixels (1..128),
+- any other byte is one pixel value, 0..127.
+
+MNIST digits are about 80% blank background, so an image averages 178 bytes instead of 784
+(4.4x smaller on the 10,000 test images; lossless). The board expands it back one pixel per
+clock while it receives, and stops reading the serial FIFO while it is writing out a run of zeros.
+The checksum covers the compressed bytes. `host/accel_proto.py` has `rle_encode` and a reference
+`rle_decode`.
 
 ## Link protection (version 2)
 

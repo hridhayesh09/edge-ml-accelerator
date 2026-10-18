@@ -48,7 +48,7 @@ All numbers below come from simulation, Quartus reports, or runs on the real boa
 
 | | |
 | --- | --- |
-| Tests | 56 tests in 9 suites (8x8 and 16x16 builds), all passing |
+| Tests | 52 tests in 9 suites (8x8 and 16x16 builds), all passing |
 | Random matrix products checked | 1,100+ bit-exact with NumPy |
 | MNIST accuracy (10,000 images) | float32 97.68%, INT8 97.67% |
 | Peak throughput | 25.6 GOPS (256 MACs x 2 ops x 50 MHz) |
