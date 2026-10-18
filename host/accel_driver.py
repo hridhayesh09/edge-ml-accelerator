@@ -29,11 +29,27 @@ class _Base:
     def ping(self):
         return P.dec_ping(self.xfer(P.enc_ping(), P.PING_REPLY_LEN))
 
+    def resync(self):
+        """Get back in step with the board after a link error."""
+
     def run_program(self, gen):
+        """Drive a protocol generator (see accel_proto.matmul_program),
+        recovering from link errors: on a timeout or a RESYNC request, resync
+        with the board and let the generator redo the current output tile."""
         try:
             tx, n = next(gen)
             while True:
-                tx, n = gen.send(self.xfer(tx, n))
+                if tx is P.RESYNC:
+                    self.resync()
+                    tx, n = gen.send(b"")
+                    continue
+                try:
+                    rx = self.xfer(tx, n)
+                except TimeoutError:
+                    self.resync()
+                    tx, n = gen.throw(P.RetryTile())
+                    continue
+                tx, n = gen.send(rx)
         except StopIteration as stop:
             return stop.value
 
@@ -57,14 +73,33 @@ class _Base:
 class Accelerator(_Base):
     """The real board, over a serial port."""
 
-    def __init__(self, port, baud=115200, timeout=10.0):
+    def __init__(self, port, baud=115200):
         import serial  # pyserial
 
-        self.ser = serial.Serial(port, baud, timeout=timeout)
+        self.baud = baud
+        self.ser = serial.Serial(port, baud, timeout=1.0)
         time.sleep(0.05)
         self.ser.reset_input_buffer()
 
+    def resync(self):
+        # The board drops a stalled LOAD after 50 ms of silence. Wait longer
+        # than that, throw away anything half-sent, and check with a PING.
+        # If a command byte was hit, the board may be busy answering garbage
+        # it took for commands, so first wait until the line goes quiet.
+        self.ser.timeout = 0.5
+        for _ in range(20):
+            self.ser.reset_input_buffer()
+            time.sleep(0.2)
+            if self.ser.in_waiting:
+                continue
+            self.ser.write(P.enc_ping())
+            if self.ser.read(P.PING_REPLY_LEN)[:1] == bytes([P.RSP_PING]):
+                return
+        raise TimeoutError("board did not answer PING after a link error")
+
     def xfer(self, tx, n_rx):
+        # timeout: time to send and receive everything at this baud, plus slack
+        self.ser.timeout = 0.5 + 2 * 10 * (len(tx) + n_rx) / self.baud
         self.ser.write(tx)
         data = self.ser.read(n_rx)
         if len(data) != n_rx:
@@ -86,27 +121,42 @@ class SimAccelerator(_Base):
     the simulation tests confirmed: M rows take M + 2N cycles.
     """
 
-    def __init__(self):
+    def __init__(self, corrupt_prob=0.0, seed=0):
         self.w = np.zeros((P.N, P.N), dtype=np.int8)
         self.a = np.zeros((1, P.N), dtype=np.int8)
         self.obuf = np.zeros((P.MAX_M, P.N), dtype=np.int64)   # output buffer
+        self.bad = False
+        # Fault injection for testing the retry path: each transfer has a
+        # `corrupt_prob` chance of one payload byte arriving corrupted.
+        self.corrupt_prob = corrupt_prob
+        self.rng = np.random.default_rng(seed)
 
     def xfer(self, tx, n_rx):
+        if self.corrupt_prob and len(tx) > 3 and self.rng.random() < self.corrupt_prob:
+            tx = bytearray(tx)
+            tx[2] ^= 0x40                       # a payload byte, never the command
+            tx = bytes(tx)
         out = bytearray()
         i = 0
         while i < len(tx):
             cmd = tx[i]
             i += 1
             if cmd == P.CMD_PING:
-                out += bytes([P.RSP_PING, P.N, P.MAX_M - 1, 1])
+                out += bytes([P.RSP_PING, P.N, P.MAX_M - 1, P.PROTOCOL_VERSION])
             elif cmd == P.CMD_LOAD_W:
-                self.w = np.frombuffer(tx[i:i + P.N * P.N], dtype=np.int8).reshape(P.N, P.N)
-                i += P.N * P.N
+                body = tx[i:i + P.N * P.N]
+                self.w = np.frombuffer(body, dtype=np.int8).reshape(P.N, P.N)
+                self.bad |= P.checksum(body) != tx[i + P.N * P.N]
+                i += P.N * P.N + 1
             elif cmd == P.CMD_LOAD_A:
                 m = tx[i] + 1
-                i += 1
-                self.a = np.frombuffer(tx[i:i + m * P.N], dtype=np.int8).reshape(m, P.N)
-                i += m * P.N
+                body = tx[i:i + 1 + m * P.N]
+                self.a = np.frombuffer(body[1:], dtype=np.int8).reshape(m, P.N)
+                self.bad |= P.checksum(body) != tx[i + 1 + m * P.N]
+                i += 1 + m * P.N + 1
+            elif cmd in (P.CMD_RUN, P.CMD_RUN_ACC) and self.bad:
+                self.bad = False
+                out += bytes([P.RSP_BAD, 0, 0, 0, 0])
             elif cmd in (P.CMD_RUN, P.CMD_RUN_ACC):
                 m = self.a.shape[0]
                 prod = P.golden_matmul(self.a, self.w).astype(np.int64)
@@ -117,7 +167,8 @@ class SimAccelerator(_Base):
                 out += bytes([P.RSP_DONE]) + cycles.to_bytes(4, "little")
             elif cmd == P.CMD_READ:
                 m = self.a.shape[0]
-                out += self.obuf[:m].astype("<i4").tobytes()
+                res = self.obuf[:m].astype("<i4").tobytes()
+                out += res + bytes([P.checksum(res)])
             else:
                 out += bytes([P.RSP_ERR])
         assert len(out) == n_rx, f"model produced {len(out)} bytes, host expected {n_rx}"
@@ -127,6 +178,8 @@ class SimAccelerator(_Base):
 def open_accelerator(port, baud=115200):
     if port == "sim":
         return SimAccelerator()
+    if port.startswith("sim-faulty"):          # e.g. "sim-faulty:0.05" for testing retries
+        return SimAccelerator(corrupt_prob=float(port.split(":")[1]) if ":" in port else 0.02)
     return Accelerator(port, baud)
 
 
@@ -143,6 +196,7 @@ def summarize(st, wall_s):
         "pe_utilization": st.useful_macs / (st.compute_cycles * P.N * P.N) if st.compute_cycles else 0.0,
         "bytes_sent": st.bytes_sent,
         "bytes_received": st.bytes_received,
+        "retries": st.retries,
         "wall_time_s": wall_s,
         "gops_end_to_end": ops / wall_s / 1e9 if wall_s else 0.0,
         "compute_share_of_wall": compute_s / wall_s if wall_s else 0.0,

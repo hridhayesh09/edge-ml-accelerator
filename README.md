@@ -15,13 +15,14 @@ Laptop (Python) --USB serial--> DE10-Lite
 
 ## Results
 
-All numbers below come from simulation, Quartus reports, or runs on the real board.
+All numbers below come from simulation, Quartus reports, or runs on the real board
+(raw files in [results/](results/)).
 
 **On the board**
 
 | | |
 | --- | --- |
-| Matrix products | 12 / 12 bit-exact with NumPy (up to 256x256x64) |
+| Matrix products | all bit-exact with NumPy (up to 256x256x64) |
 | MNIST | bit-exact with NumPy on both layers, 1,000 test images |
 | MNIST accuracy on the board | 97.9% on those 1,000 images (same as NumPy) |
 | MNIST compute time | **20 us per image** (batch of 64) |
@@ -32,17 +33,17 @@ All numbers below come from simulation, Quartus reports, or runs on the real boa
 
 | | |
 | --- | --- |
-| Max clock (Fmax) | **85.08 MHz** (runs at 50 MHz) |
-| Logic elements | 3,331 of 49,760 (7%) |
+| Max clock (Fmax) | **76.85 MHz** (runs at 50 MHz) |
+| Logic elements | 3,431 of 49,760 (7%) |
 | Hardware multipliers | 64 of 288 (one per PE) |
 | Memory blocks (M9K) | 21 of 182 |
-| Power | 225 mW (Quartus estimate) |
+| Power | 226 mW (Quartus estimate) |
 
 **Simulation**
 
 | | |
 | --- | --- |
-| Tests | 26 tests in 6 suites, all passing |
+| Tests | 29 tests in 6 suites, all passing |
 | Random matrix products checked | 1,100+ bit-exact with NumPy |
 | MNIST accuracy (10,000 images) | float32 97.68%, INT8 97.67% |
 | Peak throughput | 6.4 GOPS (64 MACs x 2 ops x 50 MHz) |
@@ -51,7 +52,7 @@ All numbers below come from simulation, Quartus reports, or runs on the real boa
 
 | Platform | Compute time | GOPS | Power | GOPS/W |
 | --- | --- | --- | --- | --- |
-| DE10-Lite FPGA | 1.28 ms | 5.08 | 225 mW (estimate) | 22.6 |
+| DE10-Lite FPGA | 1.28 ms | 5.08 | 226 mW (estimate) | 22.5 |
 | Raspberry Pi | _TBD_ | _TBD_ | _TBD_ | _TBD_ |
 | NVIDIA Jetson | _TBD_ | _TBD_ | _TBD_ | _TBD_ |
 
@@ -61,8 +62,9 @@ All numbers below come from simulation, Quartus reports, or runs on the real boa
   partial sums flow down. After a short pipeline fill, one result row comes out every clock.
 - **Tiling:** big matrices are cut into 8x8 tiles. Long dot products (like MNIST's 784 inputs)
   are added up inside the FPGA, so only final results go back to the laptop.
-- **Serial link:** 115200-baud UART with FIFOs in both directions. An ESP32-S3 dev board is used
-  as the USB-to-serial bridge.
+- **Serial link:** 115200-baud UART with FIFOs in both directions. Every transfer carries a
+  checksum; a corrupted or lost byte is detected, and the host resyncs and retries the tile. An
+  ESP32-S3 dev board is used as the USB-to-serial bridge.
 - **Verification:** every module is tested with cocotb against NumPy, including the full design
   driven through its UART pins.
 

@@ -11,7 +11,8 @@ module accel_top #(
     parameter CLKS_PER_BIT = 434,   // 50 MHz / 115200 baud
     parameter N            = 8,
     parameter MAX_M        = 256,
-    parameter FIFO_DEPTH   = 64
+    parameter FIFO_DEPTH   = 64,
+    parameter RX_TIMEOUT   = 2_500_000   // 50 ms at 50 MHz, see accel_core.v
 ) (
     input  wire clk,
     input  wire rst,
@@ -49,7 +50,7 @@ module accel_top #(
     wire       txf_full;
     wire       core_err;
 
-    accel_core #(.N(N), .MAX_M(MAX_M)) u_core (
+    accel_core #(.N(N), .MAX_M(MAX_M), .RX_TIMEOUT(RX_TIMEOUT)) u_core (
         .clk(clk), .rst(rst),
         .rx_empty(rxf_empty), .rx_data(rxf_dout), .rx_rd(rxf_rd),
         .tx_full(txf_full), .tx_data(core_tx_data), .tx_wr(core_tx_wr),

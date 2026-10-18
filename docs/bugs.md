@@ -63,9 +63,10 @@ Format: **symptom → cause → fix → lesson**.
 - **Fix:** start the test explicitly when SDRAM initialization finishes (set write phase, address
   0, clear counters) instead of trusting power-up values, and set `ALLOW_POWER_UP_DONT_CARE OFF`.
   Verified with JTAG probes: 217 million reads from power-up, 0 errors.
-- **Lesson:** don't rely on Verilog initial values for control state on an FPGA.
+- **Lesson:** don't rely on Verilog initial values for control state on an FPGA. Use an explicit
+  reset or initialization step, and check the synthesis report for registers it removed.
 
-### 3. One timeout during the first big matmul over UART (open)
+### 3. One timeout during the first big matmul over UART (fixed with protocol v2)
 - **Symptom:** in the first `demo_matmul.py` run on the board, the 256x256x64 product timed out:
   the board sent 1 byte where a 5-byte RUN reply was expected. The 9 smaller products before it
   were bit-exact.
@@ -75,7 +76,10 @@ Format: **symptom → cause → fix → lesson**.
   One byte is consistent with an `EE` error reply, i.e. a dropped or corrupted byte knocked the
   command decoder out of step. Suspects: the jumper-wire link through the ESP32 board, or the
   Windows USB-serial driver. Not yet confirmed.
-- **Fix:** none yet. The protocol has no checksum or retry, so one bad byte aborts the run.
+- **Fix:** protocol version 2 (see [protocol.md](protocol.md)): a checksum on every LOAD and
+  READ_C, a refused-RUN reply (`EC`), a 50 ms stall timeout so a lost byte can't hang the
+  board, and host-side resync + retry of the output tile. Tests inject a corrupted weight, a
+  dropped byte and a corrupted command byte mid-matmul; the host recovers each time and the
+  answer stays exact. On the board: 8/8 matmuls bit-exact with v2.
 - **Lesson:** a long unframed byte stream needs error detection (a checksum per tile) and a way to
-  resynchronize; "it passed once" isn't the same as "the link is reliable". Use an explicit
-  reset or initialization step, and check the synthesis report for registers it removed.
+  resynchronize; "it passed once" isn't the same as "the link is reliable".

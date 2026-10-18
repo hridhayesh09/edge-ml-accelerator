@@ -36,7 +36,7 @@ SUITES = {
     "fifo":   ("sync_fifo",      [],                 {"DEPTH": 16},        "test_fifo"),
     "pe":     ("pe",             [],                 {},                   "test_pe"),
     "array":  ("systolic_array", [],                 {"N": 8},             "test_array"),
-    "system": ("accel_top",      [],                 {"CLKS_PER_BIT": 8, "N": 8, "MAX_M": 256}, "test_system"),
+    "system": ("accel_top",      [],                 {"CLKS_PER_BIT": 8, "N": 8, "MAX_M": 256, "RX_TIMEOUT": 3000}, "test_system"),
     "board":  ("tb_board",       [TB / "tb_board.v"], {},                  "test_board"),
 }
 

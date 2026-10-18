@@ -31,8 +31,11 @@ class SystemTB:
     def __init__(self, dut):
         self.dut = dut
         self.bit_ns = int(dut.CLKS_PER_BIT.value) * CLK_NS
+        self.timeout_ns = int(dut.RX_TIMEOUT.value) * CLK_NS
         self.src = UartSource(dut.uart_rx, self.bit_ns)
         self.sink = UartSink(dut.uart_tx, self.bit_ns)
+        self.faults = {}      # transfer number -> ("corrupt" | "drop", byte index)
+        self.transfers = 0
 
     async def start(self):
         Clock(self.dut.clk, CLK_NS, unit="ns", impl="gpi").start()
@@ -43,15 +46,54 @@ class SystemTB:
         cocotb.start_soon(self.sink.run())
 
     async def xfer(self, tx, n_rx):
+        self.transfers += 1
+        fault = self.faults.pop(self.transfers, None)
+        if fault:                                   # simulate a bad serial link
+            kind, idx = fault
+            tx = bytearray(tx)
+            if kind == "corrupt":
+                tx[idx] ^= 0x10
+            else:
+                del tx[idx]
+            tx = bytes(tx)
         await self.src.send(tx)
         timeout = self.bit_ns * 12 * (n_rx + 64) + 1_000_000
         return await self.sink.recv(n_rx, timeout_ns=timeout)
 
+    async def resync(self):
+        """Same steps as the real driver: wait out the board's stall timeout,
+        drop anything half-received, and check that PING works."""
+        for _ in range(50):
+            # wait until the line has been quiet for a while (the board may be
+            # busy answering garbage it took for commands)
+            self.sink.queue.clear()
+            await Timer(2 * self.timeout_ns + 100 * self.bit_ns, unit="ns")
+            if self.sink.queue:
+                continue
+            await self.src.send(P.enc_ping())
+            try:
+                rx = await self.sink.recv(P.PING_REPLY_LEN, timeout_ns=self.bit_ns * 200)
+                P.dec_ping(rx)
+                return
+            except (TimeoutError, ValueError):
+                continue
+        raise TimeoutError("could not resync with the board")
+
     async def run_program(self, gen):
+        """Drives the protocol generator with the same recovery as accel_driver."""
         try:
             tx, n = next(gen)
             while True:
-                rx = await self.xfer(tx, n)
+                if tx is P.RESYNC:
+                    await self.resync()
+                    tx, n = gen.send(b"")
+                    continue
+                try:
+                    rx = await self.xfer(tx, n)
+                except TimeoutError:
+                    await self.resync()
+                    tx, n = gen.throw(P.RetryTile())
+                    continue
                 tx, n = gen.send(rx)
         except StopIteration as stop:
             return stop.value
@@ -71,7 +113,7 @@ async def ping(dut):
     tb = SystemTB(dut)
     await tb.start()
     info = P.dec_ping(await tb.xfer(P.enc_ping(), P.PING_REPLY_LEN))
-    assert info == {"n": 8, "max_m": 256, "version": 1}, info
+    assert info == {"n": 8, "max_m": 256, "version": P.PROTOCOL_VERSION}, info
 
 
 @cocotb.test()
@@ -163,3 +205,53 @@ async def commands_back_to_back(dut):
     assert np.array_equal(c, P.golden_matmul(a, w))
     P.dec_ping(rx[-4:])
     await Timer(1, unit="us")
+
+
+@cocotb.test()
+async def bad_checksum_refuses_run(dut):
+    """A corrupted LOAD makes RUN_ACC reply EC without touching the output buffer."""
+    tb = SystemTB(dut)
+    await tb.start()
+    w1, a1 = rand_int8(RNG, (8, 8)), rand_int8(RNG, (5, 8))
+    w2, a2 = rand_int8(RNG, (8, 8)), rand_int8(RNG, (5, 8))
+    P.dec_run(await tb.xfer(P.enc_load_w(w1) + P.enc_load_a(a1) + P.enc_run(), P.RUN_REPLY_LEN))
+
+    bad_w = bytearray(P.enc_load_w(w2))
+    bad_w[10] ^= 0x01                               # one flipped bit in a weight
+    rx = await tb.xfer(bytes(bad_w) + P.enc_load_a(a2) + P.enc_run(accumulate=True),
+                       P.RUN_REPLY_LEN)
+    assert rx == bytes([P.RSP_BAD, 0, 0, 0, 0]), rx.hex()
+
+    c = P.dec_results(await tb.xfer(P.enc_read(), P.read_len(5)), 5)
+    assert np.array_equal(c, P.golden_matmul(a1, w1)), "refused RUN_ACC changed the output"
+
+
+@cocotb.test()
+async def lost_byte_times_out(dut):
+    """A LOAD missing a byte must not hang the board: it times out, PING works,
+    and the next tile computes correctly."""
+    tb = SystemTB(dut)
+    await tb.start()
+    w, a = rand_int8(RNG, (8, 8)), rand_int8(RNG, (4, 8))
+    short = P.enc_load_a(a)[:-2]                    # lose the last data byte and the checksum
+    await tb.src.send(P.enc_load_w(w) + short)
+    await Timer(2 * tb.timeout_ns, unit="ns")
+    assert len(tb.sink.queue) == 0
+    P.dec_ping(await tb.xfer(P.enc_ping(), P.PING_REPLY_LEN))
+    await tb.matmul(a, w)
+
+
+@cocotb.test()
+async def link_errors_recovered(dut):
+    """Full host recovery path: corrupted and dropped bytes in the middle of a
+    tiled matmul, the host resyncs and retries, and the answer is still exact."""
+    tb = SystemTB(dut)
+    await tb.start()
+    a, w = rand_int8(RNG, (20, 32)), rand_int8(RNG, (32, 16))
+    # 4 K-slices x 2 output tiles; each output tile = 4 tile uploads + 1 READ.
+    #   transfer 2  (tile 0, k=1): corrupt a weight      -> EC reply, retry tile 0 (3..7)
+    #   transfer 9  (tile 1, k=1): drop an activation    -> board times out, retry tile 1 (13..17)
+    #   transfer 14 (tile 1, k=1): corrupt the command   -> garbage reply, retry tile 1 (18..22)
+    tb.faults = {2: ("corrupt", 30), 9: ("drop", 100), 14: ("corrupt", 0)}
+    _, st = await tb.matmul(a, w)
+    assert st.retries == 3, st.retries

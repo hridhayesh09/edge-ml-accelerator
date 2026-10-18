@@ -6,12 +6,22 @@
 // (to the UART transmit FIFO). See docs/protocol.md for the byte format.
 //
 //   'P' 0x50  PING       -> replies A5, N, MAX_M-1, VERSION
-//   'W' 0x57  LOAD_W     + N*N weight bytes (int8, row-major W[k][n])
-//   'A' 0x41  LOAD_A     + (M-1) + M*N activation bytes (int8, row-major A[m][k])
+//   'W' 0x57  LOAD_W     + N*N weight bytes (int8, row-major W[k][n]) + checksum
+//   'A' 0x41  LOAD_A     + (M-1) + M*N activation bytes (int8, row-major A[m][k]) + checksum
 //   'R' 0x52  RUN        C  = A x W, replies D0 + 4-byte cycle count
 //   'U' 0x55  RUN_ACC    C += A x W (accumulate onto the last result)
-//   'C' 0x43  READ_C     -> replies M*N int32 results, little-endian
+//   'C' 0x43  READ_C     -> replies M*N int32 results, little-endian, + checksum
 //   other                -> replies EE
+//
+// Link protection (protocol version 2):
+//   * checksum = sum of the data bytes mod 256 (for LOAD_A this includes the
+//     M-1 byte). If a LOAD's checksum is wrong, or a LOAD stalls for
+//     RX_TIMEOUT clocks (a byte was lost), the loaded data is marked bad and
+//     the next RUN/RUN_ACC replies EC 00 00 00 00 without computing, so the
+//     output buffer is untouched and the host can simply resend the tile.
+//   * The stall timeout also drops the controller back to idle, so a lost
+//     byte can never leave it stuck waiting.
+//   * PING clears the bad flag: the host PINGs to resync after an error.
 //
 // Buffers (all inferred as block RAM):
 //   activation buffer : MAX_M rows x (8*N) bits
@@ -22,8 +32,9 @@
 // output buffer in hardware, so only the final sum has to be sent back.
 
 module accel_core #(
-    parameter N     = 8,
-    parameter MAX_M = 256
+    parameter N          = 8,
+    parameter MAX_M      = 256,
+    parameter RX_TIMEOUT = 2_500_000   // clocks of silence mid-LOAD before giving up (50 ms)
 ) (
     input  wire       clk,
     input  wire       rst,
@@ -46,7 +57,7 @@ module accel_core #(
     localparam WW = $clog2(NN);
     localparam BW = $clog2(N);          // byte-in-row index width
     localparam OB = $clog2(4 * N);      // byte-in-output-row index width
-    localparam [7:0] VERSION   = 8'd1;
+    localparam [7:0] VERSION   = 8'd2;
     localparam [7:0] N_BYTE    = N;
     localparam [7:0] MLAST_MAX = MAX_M - 1;
 
@@ -60,6 +71,7 @@ module accel_core #(
     localparam RSP_PING = 8'hA5;
     localparam RSP_DONE = 8'hD0;
     localparam RSP_ERR  = 8'hEE;
+    localparam RSP_BAD  = 8'hEC;     // RUN refused: last LOAD had a bad checksum or timed out
 
     localparam S_IDLE    = 4'd0;
     localparam S_LOAD_W  = 4'd1;
@@ -70,6 +82,9 @@ module accel_core #(
     localparam S_RESP    = 4'd6;
     localparam S_RD_ADDR = 4'd7;
     localparam S_RD_SEND = 4'd8;
+    localparam S_CSUM_W  = 4'd9;     // waiting for LOAD_W's checksum byte
+    localparam S_CSUM_A  = 4'd10;    // waiting for LOAD_A's checksum byte
+    localparam S_RD_CSUM = 4'd11;    // sending READ_C's checksum byte
 
     reg [3:0] state = S_IDLE;
 
@@ -98,6 +113,11 @@ module accel_core #(
 
     reg             err_flag = 0;
 
+    reg [7:0]       csum     = 0;      // running checksum of LOAD data / READ_C bytes
+    reg             bad      = 0;      // loaded data is not trustworthy
+    localparam TW = $clog2(RX_TIMEOUT + 1);
+    reg [TW-1:0]    quiet    = 0;      // clocks since the last byte, during a LOAD
+
     // ------------------------------------------------------------------
     // Activation buffer
     // ------------------------------------------------------------------
@@ -118,8 +138,9 @@ module accel_core #(
     wire              arr_out_valid;
     wire [32*N-1:0]   arr_c_row;
 
-    assign rx_rd = !rx_empty && (state == S_IDLE || state == S_LOAD_W ||
-                                 state == S_ALEN || state == S_LOAD_A);
+    wire   loading = (state == S_LOAD_W || state == S_ALEN || state == S_LOAD_A ||
+                      state == S_CSUM_W || state == S_CSUM_A);
+    assign rx_rd = !rx_empty && (state == S_IDLE || loading);
 
     systolic_array #(.N(N)) u_array (
         .clk      (clk),
@@ -168,6 +189,9 @@ module accel_core #(
         end else if (state == S_RD_SEND) begin
             tx_data = omem_rdata[8*rd_byte +: 8];
             tx_wr   = !tx_full;
+        end else if (state == S_RD_CSUM) begin
+            tx_data = csum;
+            tx_wr   = !tx_full;
         end
     end
 
@@ -190,10 +214,15 @@ module accel_core #(
             if (arr_out_valid) wr_row  <= wr_row + 1'b1;
             if (busy)          cycles  <= cycles + 1'b1;
 
+            // A LOAD that goes quiet means a byte was lost: give up on it.
+            if (loading && !rx_rd) quiet <= quiet + 1'b1;
+            else                   quiet <= 0;
+
             case (state)
                 S_IDLE: if (rx_rd) begin
                     case (rx_data)
-                        CMD_PING: begin
+                        CMD_PING: begin             // also the host's resync point
+                            bad      <= 1'b0;
                             resp_buf <= {8'd0, VERSION, MLAST_MAX, N_BYTE, RSP_PING};
                             resp_len <= 3'd4;
                             resp_idx <= 0;
@@ -201,20 +230,33 @@ module accel_core #(
                         end
                         CMD_LOAD_W: begin
                             wcnt  <= 0;
+                            csum  <= 0;
                             state <= S_LOAD_W;
                         end
-                        CMD_LOAD_A: state <= S_ALEN;
+                        CMD_LOAD_A: begin
+                            csum  <= 0;
+                            state <= S_ALEN;
+                        end
                         CMD_RUN, CMD_RUN_ACC: begin
-                            acc_mode <= (rx_data == CMD_RUN_ACC);
-                            feed_cnt <= 0;
-                            pre_row  <= 0;
-                            wr_row   <= 0;
-                            cycles   <= 0;
-                            state    <= S_FEED;
+                            if (bad) begin              // refuse: data is suspect
+                                bad      <= 1'b0;
+                                resp_buf <= {32'd0, RSP_BAD};
+                                resp_len <= 3'd5;
+                                resp_idx <= 0;
+                                state    <= S_RESP;
+                            end else begin
+                                acc_mode <= (rx_data == CMD_RUN_ACC);
+                                feed_cnt <= 0;
+                                pre_row  <= 0;
+                                wr_row   <= 0;
+                                cycles   <= 0;
+                                state    <= S_FEED;
+                            end
                         end
                         CMD_READ: begin
                             rd_row  <= 0;
                             rd_byte <= 0;
+                            csum    <= 0;
                             state   <= S_RD_ADDR;
                         end
                         default: begin
@@ -230,11 +272,18 @@ module accel_core #(
                 S_LOAD_W: if (rx_rd) begin
                     // the weight itself is written straight into the PE
                     // (see w_we/w_addr/w_data on the array)
-                    if (wcnt == NN - 1) state <= S_IDLE;
+                    csum <= csum + rx_data;
+                    if (wcnt == NN - 1) state <= S_CSUM_W;
                     wcnt <= wcnt + 1'b1;
                 end
 
+                S_CSUM_W, S_CSUM_A: if (rx_rd) begin
+                    if (rx_data != csum) bad <= 1'b1;
+                    state <= S_IDLE;
+                end
+
                 S_ALEN: if (rx_rd) begin
+                    csum   <= csum + rx_data;
                     m_last <= rx_data[MW-1:0];
                     a_row  <= 0;
                     a_byte <= 0;
@@ -242,13 +291,14 @@ module accel_core #(
                 end
 
                 S_LOAD_A: if (rx_rd) begin
+                    csum <= csum + rx_data;
                     if (a_byte == N - 1) begin
                         amem_we    <= 1'b1;
                         amem_waddr <= a_row;
                         amem_wdata <= {rx_data, row_buf[8*(N-1)-1:0]};
                         a_byte     <= 0;
                         a_row      <= a_row + 1'b1;
-                        if (a_row == m_last) state <= S_IDLE;
+                        if (a_row == m_last) state <= S_CSUM_A;
                     end else begin
                         row_buf[8*a_byte +: 8] <= rx_data;
                         a_byte <= a_byte + 1'b1;
@@ -282,10 +332,11 @@ module accel_core #(
                 S_RD_ADDR: state <= S_RD_SEND;
 
                 S_RD_SEND: if (tx_wr) begin
+                    csum <= csum + tx_data;
                     if (rd_byte == 4 * N - 1) begin
                         rd_byte <= 0;
                         if (rd_row == m_last) begin
-                            state <= S_IDLE;
+                            state <= S_RD_CSUM;
                         end else begin
                             rd_row <= rd_row + 1'b1;
                             state  <= S_RD_ADDR;
@@ -295,8 +346,17 @@ module accel_core #(
                     end
                 end
 
+                S_RD_CSUM: if (tx_wr) state <= S_IDLE;
+
                 default: state <= S_IDLE;
             endcase
+
+            // Lost byte: abandon the LOAD, mark its data bad, back to idle.
+            if (loading && quiet == RX_TIMEOUT[TW-1:0]) begin
+                bad      <= 1'b1;
+                err_flag <= 1'b1;
+                state    <= S_IDLE;
+            end
         end
     end
 endmodule
