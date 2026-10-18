@@ -1,0 +1,47 @@
+# Runs every simulation test on each push and pull request.
+# The README badge shows the result of the latest run on main.
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  rtl:
+    name: RTL suite (${{ matrix.suite }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [uart, uart25, fifo, pe, array, system, board]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install Icarus Verilog
+        run: sudo apt-get update && sudo apt-get install -y iverilog
+      - name: Install Python packages
+        run: pip install -r requirements.txt
+      - name: Run cocotb tests
+        run: python tb/run_tests.py ${{ matrix.suite }}
+
+  host-and-boardtest:
+    name: Host software + board self-test
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install Icarus Verilog
+        run: sudo apt-get update && sudo apt-get install -y iverilog
+      - name: Install Python packages
+        run: pip install -r requirements.txt
+      - name: Host checks (software model, fault injection, MNIST pipeline)
+        working-directory: host
+        run: python check_sim.py
+      - name: Board self-test simulations
+        run: bash boardtest/run_sims.sh

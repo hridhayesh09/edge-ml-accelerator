@@ -12,7 +12,7 @@ import os
 import sys
 from pathlib import Path
 
-from cocotb_tools.runner import get_runner
+from cocotb_tools.runner import get_results, get_runner
 
 ROOT = Path(__file__).resolve().parent.parent
 RTL = ROOT / "rtl"
@@ -72,9 +72,20 @@ def main():
     names = args or list(SUITES)
     sys.path.insert(0, str(TB))
     os.environ.setdefault("COCOTB_RANDOM_SEED", "12345")
+    totals = {}
     for name in names:
         print(f"\n===== {name} =====")
-        run_suite(name, waves)
+        totals[name] = get_results(run_suite(name, waves))   # (tests, failed)
+
+    # cocotb's runner only fails the process under pytest, so check here:
+    # the exit code is what CI (GitHub Actions) looks at.
+    print("\n===== summary =====")
+    for name, (n, failed) in totals.items():
+        print(f"{name:>8}: {n - failed}/{n} passed")
+    n_all = sum(n for n, _ in totals.values())
+    failed_all = sum(f for _, f in totals.values())
+    print(f"   total: {n_all - failed_all}/{n_all} passed")
+    sys.exit(1 if failed_all else 0)
 
 
 if __name__ == "__main__":
