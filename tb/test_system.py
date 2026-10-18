@@ -4,7 +4,7 @@ The testbench plays the laptop: it sends real UART bytes into uart_rx and
 decodes what comes out of uart_tx. It uses host/accel_proto.py, the same
 protocol code the real host script uses.
 
-The baud rate is sped up (8 clocks per bit instead of 434) so simulations
+The baud rate is sped up (8 clocks per bit instead of 25) so simulations
 finish quickly. Nothing else changes.
 """
 

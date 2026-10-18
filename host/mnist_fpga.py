@@ -25,8 +25,8 @@ MODEL = Path(__file__).resolve().parent / "mnist_int8.npz"
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", required=True, help="serial port, or 'sim'")
-    ap.add_argument("--baud", type=int, default=115200)
-    ap.add_argument("--num", type=int, default=64, help="test images to run (64 takes ~40 s at 115200 baud)")
+    ap.add_argument("--baud", type=int, default=2_000_000)
+    ap.add_argument("--num", type=int, default=64, help="test images to run")
     ap.add_argument("--json", help="write results to this file")
     args = ap.parse_args()
 

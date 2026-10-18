@@ -73,7 +73,7 @@ class _Base:
 class Accelerator(_Base):
     """The real board, over a serial port."""
 
-    def __init__(self, port, baud=115200):
+    def __init__(self, port, baud=2_000_000):
         import serial  # pyserial
 
         self.baud = baud
@@ -175,7 +175,7 @@ class SimAccelerator(_Base):
         return bytes(out)
 
 
-def open_accelerator(port, baud=115200):
+def open_accelerator(port, baud=2_000_000):
     if port == "sim":
         return SimAccelerator()
     if port.startswith("sim-faulty"):          # e.g. "sim-faulty:0.05" for testing retries

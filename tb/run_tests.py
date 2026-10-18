@@ -33,6 +33,8 @@ RTL_CORE = [
 # suite name -> (top-level module, extra sources, parameters, python test module)
 SUITES = {
     "uart":   ("tb_uart",        [TB / "tb_uart.v"], {"CLKS_PER_BIT": 16}, "test_uart"),
+    # same UART tests at the board's real setting: 50 MHz / 2 Mbaud = 25 clocks per bit
+    "uart25": ("tb_uart",        [TB / "tb_uart.v"], {"CLKS_PER_BIT": 25}, "test_uart"),
     "fifo":   ("sync_fifo",      [],                 {"DEPTH": 16},        "test_fifo"),
     "pe":     ("pe",             [],                 {},                   "test_pe"),
     "array":  ("systolic_array", [],                 {"N": 8},             "test_array"),

@@ -19,7 +19,7 @@
 
 module de10lite_top #(
     parameter CLK_HZ = 50_000_000,
-    parameter BAUD   = 115_200
+    parameter BAUD   = 2_000_000
 ) (
     input  wire        MAX10_CLK1_50,
     input  wire [1:0]  KEY,
@@ -29,7 +29,7 @@ module de10lite_top #(
     output wire [7:0]  HEX1,
     inout  wire [15:0] ARDUINO_IO
 );
-    localparam CLKS_PER_BIT = (CLK_HZ + BAUD / 2) / BAUD;   // rounded: 434 at 115200
+    localparam CLKS_PER_BIT = (CLK_HZ + BAUD / 2) / BAUD;   // 25 at 2 Mbaud (exact)
 
     wire clk = MAX10_CLK1_50;
 

@@ -8,7 +8,7 @@
 // bytes without waiting for each one to finish transmitting.
 
 module accel_top #(
-    parameter CLKS_PER_BIT = 434,   // 50 MHz / 115200 baud
+    parameter CLKS_PER_BIT = 25,    // 50 MHz / 2,000,000 baud
     parameter N            = 8,
     parameter MAX_M        = 256,
     parameter FIFO_DEPTH   = 64,

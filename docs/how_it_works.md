@@ -82,7 +82,8 @@ deskew delays col 0 by 1 cycle, so both come out together.
 
 UART frame (8N1): line idles high, **start bit = 0**, 8 data bits **LSB first**, **stop bit = 1**.
 
-- `CLKS_PER_BIT = 50,000,000 / 115,200 = 434` clock cycles per bit.
+- `CLKS_PER_BIT = 50,000,000 / 2,000,000 = 25` clock cycles per bit (exact). The first version
+  ran at 115,200 baud (434 clocks per bit); going to 2 Mbaud made everything about 16x faster.
 - **2-flop synchronizer:** the RX pin is asynchronous to our clock. Sampling it directly can catch
   a flip-flop mid-transition (metastability). Passing it through two flip-flops gives the first one
   a full cycle to settle.
@@ -156,7 +157,7 @@ for serial).
 | pe | every corner case of int8 x int8 + int32, plus 5,000 random |
 | array | 1,085 random matrices (34,000+ rows), exact latency, gaps in the input stream |
 | system | the whole design through its UART pins using the real host protocol code |
-| board | the exact board top level at the real 115200 baud |
+| board | the exact board top level at the real 2 Mbaud |
 
 **Run them:** `python tb/run_tests.py` (or one suite: `python tb/run_tests.py array`).
 **See waveforms:** `python tb/run_tests.py array --waves`, then open
@@ -197,8 +198,8 @@ after you compile and quote it.)
 
 **What limits utilization?**
 Pipeline fill/drain (16 cycles per tile, so small batches waste time), and the UART: the array
-finishes a tile in microseconds, but sending the data at 115200 baud takes milliseconds. Over 90%
-of end-to-end time is data transfer. Fixes: faster I/O (SPI, Ethernet, PCIe), bigger on-chip
+finishes a tile in microseconds, but sending the data takes much longer. At 115,200 baud,
+99.997% of MNIST end-to-end time was data transfer; at 2 Mbaud it is still 99.95%. Fixes: faster I/O (SPI, Ethernet, PCIe), bigger on-chip
 buffers so data is sent once, or an output-stationary design for a different reuse pattern.
 
 **Why is your FPGA slower than a Jetson?**

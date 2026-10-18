@@ -1,6 +1,6 @@
 // tb_board.v
 // Test wrapper around the real board top level (de10lite_top), so the board
-// wiring, reset logic, real 115200 baud setting, LEDs, and 7-segment counter
+// wiring, reset logic, real 2 Mbaud setting, LEDs, and 7-segment counter
 // are all simulated exactly as they will be built.
 
 module tb_board (

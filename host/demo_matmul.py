@@ -21,7 +21,7 @@ SHAPES = [(8, 8, 8), (64, 64, 64), (256, 64, 64), (256, 256, 64)]
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", required=True, help="serial port, or 'sim'")
-    ap.add_argument("--baud", type=int, default=115200)
+    ap.add_argument("--baud", type=int, default=2_000_000)
     ap.add_argument("--trials", type=int, default=3, help="random matrices per shape")
     ap.add_argument("--json", help="write results to this file")
     args = ap.parse_args()

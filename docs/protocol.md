@@ -1,6 +1,7 @@
 # Host protocol
 
-The board talks over a plain UART: **115200 baud, 8 data bits, no parity, 1 stop bit (8N1)**.
+The board talks over a plain UART: **2,000,000 baud, 8 data bits, no parity, 1 stop bit (8N1)**.
+At 50 MHz that is exactly 25 clocks per bit, so the FPGA side has no baud-rate error.
 Every command is one byte, followed by its data. Multi-byte numbers are little-endian.
 Commands are ASCII letters so they are easy to spot in a serial terminal.
 

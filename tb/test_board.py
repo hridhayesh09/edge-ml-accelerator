@@ -1,6 +1,6 @@
-"""Smoke test of the exact board build (de10lite_top) at the real 115200 baud.
+"""Smoke test of the exact board build (de10lite_top) at the real 2,000,000 baud.
 
-Slower than the other suites because real baud means ~434 clocks per bit,
+Uses the real board baud rate (25 clocks per bit),
 so it only does a PING and one small matrix multiply.
 """
 
@@ -17,7 +17,7 @@ import accel_proto as P  # noqa: E402
 
 from uart_model import UartSink, UartSource  # noqa: E402
 
-BIT_NS = 8681            # 1 / 115200 baud, rounded to the nearest ns
+BIT_NS = 500             # 1 / 2,000,000 baud
 HEX_1 = 0b11111001      # "1" on an active-low 7-segment display
 
 

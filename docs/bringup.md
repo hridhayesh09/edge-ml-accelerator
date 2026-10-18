@@ -116,7 +116,7 @@ bytes move, and the HEX display counts up the number of RUN commands.
 python mnist_fpga.py --port COM5 --num 64 --json ../results/fpga_mnist.json
 ```
 
-Takes about 40 seconds at 115200 baud. Write down:
+Takes about 3 seconds at 2 Mbaud. Write down:
 - `bit-exact vs NumPy: YES`
 - accuracy (FPGA should equal INT8 CPU exactly)
 - hardware compute time per image
@@ -152,11 +152,12 @@ python bench_edge.py --batch 64 --loop 30
 Perf per watt = GOPS / watts. Compare like with like: the FPGA's "hardware compute" GOPS against
 each device's compute-only GOPS from `bench_edge.py`.
 
-## Optional: faster serial link
+## Serial speed
 
-The CP2102 can go up to 921600 baud, which makes everything about 8x faster.
-1. In `rtl/de10lite_top.v`, change `parameter BAUD = 115_200` to `921_600`, recompile, reprogram.
-2. Add `--baud 921600` to every host command.
+The design runs at 2,000,000 baud (`parameter BAUD` in `rtl/de10lite_top.v`; the host scripts
+default to the same). That works with CH340/CH343 and CP2102N bridges. If your adapter can't do
+2 Mbaud (an older CP2102 tops out at 921600), set `BAUD = 921_600` (54 clocks per bit, 0.5% off),
+recompile, and pass `--baud 921600` to the host scripts.
 
 ## Troubleshooting
 
@@ -164,7 +165,7 @@ The CP2102 can go up to 921600 baud, which makes everything about 8x faster.
 | --- | --- | --- |
 | `TimeoutError` on PING, LEDR1 never flickers | wrong COM port, or TX/RX not reaching D0 | check the port name; check the wire from adapter TXD to D0 |
 | LEDR1 flickers but no reply | adapter RXD not on D1, or no shared GND | check D1 and the GND wire |
-| LEDR9 turns on | bad bytes: baud mismatch or a loose wire | confirm both sides use 115200; reseat wires; press KEY0 to clear |
+| LEDR9 turns on | bad bytes: baud mismatch or a loose wire | confirm both sides use the same baud (2 Mbaud by default); reseat wires; press KEY0 to clear |
 | Garbage bytes / wrong results | adapter at 5 V, or a flaky ground | set the adapter jumper to 3.3 V; use a short GND wire |
 | LEDR0 not blinking | board not programmed, or reset held | reprogram the .sof; make sure KEY0 isn't stuck |
 | Programmer can't find USB-Blaster | driver | see Step 1 |

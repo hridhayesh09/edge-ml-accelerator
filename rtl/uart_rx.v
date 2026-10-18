@@ -7,7 +7,7 @@
 // then samples each data bit once per bit period, right in the middle of the bit
 // where the signal is most stable.
 //
-// CLKS_PER_BIT = clock frequency / baud rate (50 MHz / 115200 = 434).
+// CLKS_PER_BIT = clock frequency / baud rate (50 MHz / 2,000,000 = 25 on the board).
 
 module uart_rx #(
     parameter CLKS_PER_BIT = 434
