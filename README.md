@@ -1,133 +1,106 @@
 # Edge ML Accelerator on FPGA
 
-An 8x8 INT8 **systolic array** (a tiny TPU-style matrix engine) written in Verilog for the
-Terasic DE10-Lite (Intel MAX 10). A laptop sends matrices over UART, the FPGA multiplies them with
-64 multiply-accumulate units running in parallel, and sends the results back. It runs both layers
-of a quantized MNIST digit classifier, bit-exact with NumPy, and is benchmarked against a
-Raspberry Pi and NVIDIA Jetson running the same layers.
+A small TPU-style matrix engine in Verilog: an **8x8 systolic array of INT8 multiply-accumulate
+units** running on a Terasic DE10-Lite (Intel MAX 10) at 50 MHz.
+
+A laptop sends matrices to the FPGA over a serial link, the 64 processing elements multiply them
+in parallel, and the results come back. It runs both layers of an MNIST digit classifier and
+matches NumPy bit for bit.
 
 ```
-Laptop (Python) --USB serial, 115200 baud--> DE10-Lite
-                                               |
-   uart_rx -> RX FIFO -> controller FSM -> weight load ----------+
-                              |                                   v
-                              +-> activation RAM --skew--> [ 8x8 PE grid ] --deskew--> output RAM
-                              |                                                    (accumulate)
-   uart_tx <- TX FIFO <-------+---------------------------------------------------------+
+Laptop (Python) --USB serial--> DE10-Lite
+                                  |
+  UART -> FIFO -> controller -> 8x8 PE grid -> output RAM -> FIFO -> UART
 ```
-
-## Highlights
-
-- **Weight-stationary 8x8 systolic array:** 64 PEs, each an int8 x int8 multiply into a 32-bit
-  accumulate, one result row per clock after a 15-cycle pipeline fill.
-- **Hardware accumulation across tiles (RUN_ACC):** a 784-long dot product is split into 98
-  tiles, summed in the output RAM, and only the final result crosses the serial link.
-- **UART host interface** with 2-flop synchronizers, mid-bit sampling, glitch and frame-error
-  handling, and FIFOs on both directions.
-- **cocotb verification** of every module against NumPy and Python models, including the full
-  design driven through its UART pins at the real 115200 baud.
-- **INT8 MNIST:** 784-64-10 network trained in NumPy, quantized to int8 with no meaningful loss.
 
 ## Results
 
-### Verified in simulation (cycle-accurate, same numbers as hardware)
+All numbers below come from simulation, Quartus reports, or runs on the real board.
 
-| Metric | Value |
+**On the board**
+
+| | |
 | --- | --- |
-| Peak throughput | 64 MACs/cycle x 2 ops x 50 MHz = **6.4 GOPS** |
-| Cycles for an M-row tile | **M + 16** (checked exactly in the tests) |
-| PE utilization at M = 256 | **94.1%** (256 / 272), i.e. **6.02 GOPS** of compute |
-| PE utilization at M = 8 | 33.3% (pipeline fill dominates small batches) |
-| MNIST test accuracy (10,000 images) | float32 **97.68%**, INT8 **97.67%** |
-| Simulation tests | **26 tests in 6 suites, all passing**; 1,100+ random matrix products checked bit-for-bit against NumPy |
+| Matrix products | 12 / 12 bit-exact with NumPy (up to 256x256x64) |
+| MNIST | bit-exact with NumPy on both layers, 1,000 test images |
+| MNIST accuracy on the board | 97.9% on those 1,000 images (same as NumPy) |
+| MNIST compute time | **20 us per image** (batch of 64) |
+| MNIST end-to-end time | 665 ms per image (99.997% of it is the serial link) |
+| PE utilization | 94.1% for 256-row tiles |
 
-### Measured on the board (Quartus Prime Lite 25.1; UART rows fill in during bring-up, see docs/bringup.md)
+**FPGA build (Quartus Prime Lite 25.1)**
 
-| Metric | Value |
+| | |
 | --- | --- |
-| Fmax (Slow 1200mV 85C) | **85.08 MHz** (runs at 50 MHz; setup slack +8.246 ns) |
-| Logic elements | **3,331** / 49,760 (7%) |
-| 9-bit multiplier elements | **64** / 288 (22%), one per PE |
-| M9K memory blocks | **21** / 182 (12%) |
-| Estimated power (Quartus Power Analyzer) | **225 mW** total (core dynamic 56, core static 91, I/O 79); vectorless estimate at 12.5% toggle rate, low confidence |
-| MNIST bit-exact vs NumPy | _TBD_ |
-| MNIST compute time per image | _TBD_ us |
-| MNIST end-to-end time per image (UART) | _TBD_ ms |
-| Share of end-to-end time spent on data transfer | _TBD_ % |
+| Max clock (Fmax) | **85.08 MHz** (runs at 50 MHz) |
+| Logic elements | 3,331 of 49,760 (7%) |
+| Hardware multipliers | 64 of 288 (one per PE) |
+| Memory blocks (M9K) | 21 of 182 |
+| Power | 225 mW (Quartus estimate) |
 
-### Edge comparison (same two layers, batch 64)
+**Simulation**
 
-| Platform | Compute latency | GOPS | Power | GOPS/W |
+| | |
+| --- | --- |
+| Tests | 26 tests in 6 suites, all passing |
+| Random matrix products checked | 1,100+ bit-exact with NumPy |
+| MNIST accuracy (10,000 images) | float32 97.68%, INT8 97.67% |
+| Peak throughput | 6.4 GOPS (64 MACs x 2 ops x 50 MHz) |
+
+**Edge comparison (same two MNIST layers, batch of 64)**
+
+| Platform | Compute time | GOPS | Power | GOPS/W |
 | --- | --- | --- | --- | --- |
-| DE10-Lite FPGA (this design) | _TBD_ | _TBD_ | _TBD_ | _TBD_ |
+| DE10-Lite FPGA | 1.28 ms | 5.08 | 225 mW (estimate) | 22.6 |
 | Raspberry Pi | _TBD_ | _TBD_ | _TBD_ | _TBD_ |
 | NVIDIA Jetson | _TBD_ | _TBD_ | _TBD_ | _TBD_ |
 
-The expected story: the Jetson wins on raw throughput by orders of magnitude (thousands of GPU
-cores at ~1 GHz vs 64 MACs at 50 MHz), and the FPGA's end-to-end time is dominated by the serial
-link, not the array. See `docs/how_it_works.md` for the analysis.
+## How it works
 
-## Repository layout
+- **Systolic array:** weights stay inside the 64 PEs; activations flow in from the left and
+  partial sums flow down. After a short pipeline fill, one result row comes out every clock.
+- **Tiling:** big matrices are cut into 8x8 tiles. Long dot products (like MNIST's 784 inputs)
+  are added up inside the FPGA, so only final results go back to the laptop.
+- **Serial link:** 115200-baud UART with FIFOs in both directions. An ESP32-S3 dev board is used
+  as the USB-to-serial bridge.
+- **Verification:** every module is tested with cocotb against NumPy, including the full design
+  driven through its UART pins.
 
-```
-rtl/        Verilog source
-  pe.v              one processing element (multiply-accumulate)
-  systolic_array.v  8x8 grid + input skew + output deskew + valid pipeline
-  accel_core.v      command FSM, activation/output RAMs, accumulate logic, cycle counter
-  accel_top.v       UART + FIFOs + core (board independent)
-  de10lite_top.v    DE10-Lite pins, reset, LEDs, 7-segment run counter
-  uart_rx.v, uart_tx.v, sync_fifo.v, sdp_ram.v
-tb/         cocotb testbenches (run_tests.py runs them all)
-host/       Python: protocol, driver, demos, MNIST training, edge benchmark
-quartus/    Quartus Prime Lite project, pin assignments, timing constraints
-docs/       protocol, bring-up guide, study guide, bug log
-```
+More detail in [docs/how_it_works.md](docs/how_it_works.md).
 
-## Quick start
-
-### Run the simulations
-
-Needs Python 3.10+, [Icarus Verilog](https://steveicarus.github.io/iverilog/) 12, and the
-Python packages. On Windows the easiest route is WSL (Ubuntu):
+## Project layout
 
 ```
-sudo apt install iverilog python3-pip      # WSL / Ubuntu
+rtl/        Verilog source (PE, systolic array, controller, UART, FIFOs)
+tb/         cocotb testbenches
+host/       Python driver, demos, MNIST training, edge benchmark
+quartus/    Quartus project, pins, timing constraints
+boardtest/  self-test design for checking the DE10-Lite board
+docs/       protocol, bring-up guide, design notes, bug log
+```
+
+## Try it
+
+**Run the simulations** (Python 3.10+ and Icarus Verilog 12):
+
+```
 pip install -r requirements.txt
-python tb/run_tests.py                     # all 6 suites (~7 min)
-python tb/run_tests.py array --waves       # one suite, with a waveform file
+python tb/run_tests.py
 ```
 
-### Try the host software without a board
-
-```
-cd host
-python demo_matmul.py --port sim
-python mnist_fpga.py --port sim --num 1000
-```
-
-`sim` uses a byte-level software model of the board, so the same commands and tiling run end to end.
-
-### Retrain the network (optional, ~2 min)
+**Run on the board** (see [docs/bringup.md](docs/bringup.md) for setup):
 
 ```
 cd host
-python mnist_train.py          # downloads MNIST, writes mnist_int8.npz
+python demo_matmul.py --port COM8
+python mnist_fpga.py --port COM8 --num 64
 ```
 
-### Build and run on the DE10-Lite
+**No board?** Use `--port sim` to run the same commands on a software model.
 
-See **[docs/bringup.md](docs/bringup.md)**: compile in Quartus, program the board, wire a 3.3 V
-USB-serial adapter to Arduino pins D0/D1, then:
+## Docs
 
-```
-cd host
-python demo_matmul.py --port COM5
-python mnist_fpga.py --port COM5 --num 64
-```
-
-## Documentation
-
-- [docs/how_it_works.md](docs/how_it_works.md): design walkthrough and interview prep
-- [docs/protocol.md](docs/protocol.md): command bytes and tiling
-- [docs/bringup.md](docs/bringup.md): step-by-step hardware bring-up and measurements
-- [docs/bugs.md](docs/bugs.md): what broke and how it was fixed
+- [How it works](docs/how_it_works.md)
+- [Protocol](docs/protocol.md)
+- [Board bring-up](docs/bringup.md)
+- [Bug log](docs/bugs.md)

@@ -63,5 +63,19 @@ Format: **symptom → cause → fix → lesson**.
 - **Fix:** start the test explicitly when SDRAM initialization finishes (set write phase, address
   0, clear counters) instead of trusting power-up values, and set `ALLOW_POWER_UP_DONT_CARE OFF`.
   Verified with JTAG probes: 217 million reads from power-up, 0 errors.
-- **Lesson:** don't rely on Verilog initial values for control state on an FPGA. Use an explicit
+- **Lesson:** don't rely on Verilog initial values for control state on an FPGA.
+
+### 3. One timeout during the first big matmul over UART (open)
+- **Symptom:** in the first `demo_matmul.py` run on the board, the 256x256x64 product timed out:
+  the board sent 1 byte where a 5-byte RUN reply was expected. The 9 smaller products before it
+  were bit-exact.
+- **What we know:** it did not come back. Three 256x256x64 products (1.6 MB) in a logging
+  script, the full demo again (12/12 bit-exact, ~2.3 MB), MNIST on 64 images, and MNIST on 1,000 images
+  (~7 MB, bit-exact) all ran clean right after.
+  One byte is consistent with an `EE` error reply, i.e. a dropped or corrupted byte knocked the
+  command decoder out of step. Suspects: the jumper-wire link through the ESP32 board, or the
+  Windows USB-serial driver. Not yet confirmed.
+- **Fix:** none yet. The protocol has no checksum or retry, so one bad byte aborts the run.
+- **Lesson:** a long unframed byte stream needs error detection (a checksum per tile) and a way to
+  resynchronize; "it passed once" isn't the same as "the link is reliable". Use an explicit
   reset or initialization step, and check the synthesis report for registers it removed.

@@ -76,6 +76,27 @@ Find the port name:
 - Linux: `ls /dev/ttyUSB*`  (usually `/dev/ttyUSB0`; you may need `sudo usermod -aG dialout $USER`)
 - Mac: `ls /dev/tty.usbserial*` or `/dev/tty.SLAB_USBtoUART`
 
+On the DE10-Lite the Arduino pins are printed as `IO0`, `IO1`, ... along the top edge, below the
+40-pin GPIO header. IO0 is the rightmost hole (next to the VGA connector); GND is the 4th hole
+from the left on the left-hand strip.
+
+### Using an ESP32 dev board as the bridge
+
+The measurements in the README used an ESP32-S3 dev board as the USB-to-serial bridge. Most ESP32
+dev boards have a USB-to-serial chip (CP2102, CH340 or CH343) on board. Holding the ESP32 itself
+in reset frees its TX/RX pins, so the laptop talks through that chip straight to the FPGA. No
+ESP32 code is needed.
+
+| ESP32 pin | Connect to | Why |
+| --- | --- | --- |
+| EN / RST | ESP32 GND | holds the ESP32 in reset |
+| RX (GPIO3; GPIO44 on an S3) | FPGA **IO0** | laptop -> FPGA (with the ESP32 in reset, "RX" carries what the laptop sends) |
+| TX (GPIO1; GPIO43 on an S3) | FPGA **IO1** | FPGA -> laptop |
+| GND | FPGA GND | shared ground |
+
+On an ESP32-S3 with two USB-C ports, use the one labeled **UART** (or COM), not **USB**. Boards
+with only native USB (no bridge chip) won't work this way.
+
 ## Step 6: First contact
 
 From the repo root:

@@ -1,0 +1,50 @@
+{
+  "images": 64,
+  "bit_exact": true,
+  "accuracy_fpga": 1.0,
+  "accuracy_int8_numpy": 1.0,
+  "accuracy_float32": 1.0,
+  "compute_time_s": 0.0012799999999999999,
+  "compute_us_per_image": 20.0,
+  "wall_time_s": 42.534887699992396,
+  "wall_ms_per_image": 664.6076203123812,
+  "uart_share_of_wall": 0.9999699070558495,
+  "layers": [
+    {
+      "shape": [
+        64,
+        784,
+        64
+      ],
+      "tiles": 784,
+      "compute_cycles": 62720,
+      "compute_time_s": 0.0012544,
+      "gops_compute": 5.12,
+      "peak_gops": 6.4,
+      "pe_utilization": 0.8,
+      "bytes_sent": 454728,
+      "bytes_received": 20304,
+      "wall_time_s": 41.36303870001575,
+      "gops_end_to_end": 0.00015527215122126785,
+      "compute_share_of_wall": 3.0326592035403877e-05
+    },
+    {
+      "shape": [
+        64,
+        64,
+        10
+      ],
+      "tiles": 16,
+      "compute_cycles": 1280,
+      "compute_time_s": 2.56e-05,
+      "gops_compute": 3.2,
+      "peak_gops": 6.4,
+      "pe_utilization": 0.5,
+      "bytes_sent": 9282,
+      "bytes_received": 4176,
+      "wall_time_s": 1.1712828999734484,
+      "gops_end_to_end": 6.994040466385792e-05,
+      "compute_share_of_wall": 2.18563764574556e-05
+    }
+  ]
+}
