@@ -45,4 +45,23 @@ Format: **symptom → cause → fix → lesson**.
 
 ## Found on hardware
 
-_(fill these in during bring-up)_
+### 1. Quartus would not compile inside OneDrive
+- **Symptom:** "Can't open project -- you do not have permission to write" and later
+  "Cannot write to directory .../incremental_db".
+- **Cause:** the repo lived in a OneDrive folder. OneDrive sets the read-only attribute on folders;
+  Windows ignores it for folders, but Quartus checks it and refuses to write.
+- **Fix:** build from a copy outside OneDrive (or move the repo out of OneDrive).
+- **Lesson:** keep FPGA projects in a short, local, non-synced path.
+
+### 2. Board self-test: SDRAM showed `Err FFF` right after loading (bug in the test, not the board)
+- **Symptom:** the memory test reported thousands of errors immediately after the design was
+  loaded, but zero errors on every pass after a restart.
+- **Cause:** the test's `writing` register is declared `reg writing = 1'b1`, but on the board it
+  started at 0. The first pass skipped writing and compared memory that held old data. Quartus
+  also removed a "first error" register entirely because, with its default *Power-Up Don't Care*
+  setting, a register that is only ever set to 1 may as well start at 1.
+- **Fix:** start the test explicitly when SDRAM initialization finishes (set write phase, address
+  0, clear counters) instead of trusting power-up values, and set `ALLOW_POWER_UP_DONT_CARE OFF`.
+  Verified with JTAG probes: 217 million reads from power-up, 0 errors.
+- **Lesson:** don't rely on Verilog initial values for control state on an FPGA. Use an explicit
+  reset or initialization step, and check the synthesis report for registers it removed.
