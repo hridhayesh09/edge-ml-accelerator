@@ -59,3 +59,26 @@ async def board_ping_and_matmul(dut):
     await ClockCycles(dut.clk, 10)
     await ReadOnly()
     assert int(dut.hex0.value) == 0b11000000, "reset did not clear the counter"
+
+
+@cocotb.test()
+async def board_infer_one_image(dut):
+    """The exact board build classifies one image on chip at the real baud rate."""
+    from mnist_common import int8_forward, numpy_int_matmul
+    Clock(dut.clk, 20, unit="ns", impl="gpi").start()
+    dut.key0_n.value = 1
+    src = UartSource(dut.uart_rx, BIT_NS)
+    sink = UartSink(dut.uart_tx, BIT_NS)
+    await ClockCycles(dut.clk, 40)
+    cocotb.start_soon(sink.run())
+
+    rng = np.random.default_rng(5)
+    img = np.zeros((1, 784), dtype=np.uint8)
+    mask = rng.random(784) < 0.2
+    img[0, mask] = rng.integers(64, 256, size=int(mask.sum()))
+    await src.send(P.enc_infer(img))
+    digits, cycles = P.dec_infer(await sink.recv(P.infer_reply_len(1), timeout_ns=5_000_000), 1)
+    q = dict(np.load(Path(__file__).resolve().parent.parent / "host" / "mnist_int8.npz"))
+    pred, _, _ = int8_forward(img, q, numpy_int_matmul)
+    assert digits[0] == pred[0], (digits, pred)
+    assert cycles == P.infer_cycles(1), cycles

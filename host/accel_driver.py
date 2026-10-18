@@ -60,6 +60,15 @@ class _Base:
         wall = time.perf_counter() - t0
         return c, summarize(st, wall)
 
+    def infer(self, images_u8, with_logits=False):
+        """Classify MNIST images with the network running entirely on the
+        board. Returns (digits, logits or None, stats dict)."""
+        t0 = time.perf_counter()
+        digits, logits, st = self.run_program(P.infer_program(images_u8, with_logits))
+        st["wall_time_s"] = time.perf_counter() - t0
+        st["compute_time_s"] = st["compute_cycles"] / CLK_HZ
+        return digits, logits, st
+
     def close(self):
         pass
 
@@ -126,6 +135,8 @@ class SimAccelerator(_Base):
         self.a = np.zeros((1, P.N), dtype=np.int8)
         self.obuf = np.zeros((P.MAX_M, P.N), dtype=np.int64)   # output buffer
         self.bad = False
+        self.logits = np.zeros((1, 10), dtype=np.int64)
+        self.model = None
         # Fault injection for testing the retry path: each transfer has a
         # `corrupt_prob` chance of one payload byte arriving corrupted.
         self.corrupt_prob = corrupt_prob
@@ -165,6 +176,22 @@ class SimAccelerator(_Base):
                 self.obuf[:m] = (prod + 2**31) % 2**32 - 2**31      # int32 wrap
                 cycles = m + 2 * P.N
                 out += bytes([P.RSP_DONE]) + cycles.to_bytes(4, "little")
+            elif cmd == P.CMD_INFER:
+                b = tx[i] + 1
+                body = tx[i:i + 1 + b * P.IN_PIX]
+                ok = P.checksum(body) == tx[i + 1 + b * P.IN_PIX]
+                images = np.frombuffer(body[1:], dtype=np.uint8).reshape(b, P.IN_PIX)
+                i += 1 + b * P.IN_PIX + 1
+                frame = bytearray([P.RSP_BAD]) + bytes(b + 4)
+                if ok:
+                    digits, logits = self._mnist(images)
+                    self.logits = logits
+                    frame = (bytearray([P.RSP_INFER]) + bytes(digits.astype(np.uint8))
+                             + P.infer_cycles(b).to_bytes(4, "little"))
+                out += frame + bytes([P.checksum(frame)])
+            elif cmd == P.CMD_LOGITS:
+                res = self.logits.astype("<i4").tobytes()
+                out += res + bytes([P.checksum(res)])
             elif cmd == P.CMD_READ:
                 m = self.a.shape[0]
                 res = self.obuf[:m].astype("<i4").tobytes()
@@ -173,6 +200,15 @@ class SimAccelerator(_Base):
                 out += bytes([P.RSP_ERR])
         assert len(out) == n_rx, f"model produced {len(out)} bytes, host expected {n_rx}"
         return bytes(out)
+
+    def _mnist(self, images):
+        """What INFER computes: the INT8 network, bit-exact (NumPy reference)."""
+        from mnist_common import int8_forward, numpy_int_matmul
+        if self.model is None:
+            from pathlib import Path
+            self.model = dict(np.load(Path(__file__).with_name("mnist_int8.npz")))
+        pred, _, acc2 = int8_forward(images, self.model, numpy_int_matmul)
+        return pred, acc2
 
 
 def open_accelerator(port, baud=2_000_000):

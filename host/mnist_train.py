@@ -72,9 +72,13 @@ def quantize(model, calib_x_u8):
     s_h = np.percentile(h_real, 99.99) / 127.0
     b2_q = np.round(model["b2"] / (s_h * s_w2)).astype(np.int64)
 
+    requant1 = s_x * s_w1 / s_h
     return {
         "W1_q": W1_q, "b1_q": b1_q, "W2_q": W2_q, "b2_q": b2_q,
-        "requant1": np.float64(s_x * s_w1 / s_h),
+        "requant1": np.float64(requant1),
+        # integer form used by the hardware: requant1 ~= mult / 2^shift
+        "requant1_mult": np.int64(round(requant1 * 2**24)),
+        "requant1_shift": np.int64(24),
         "s_x": s_x, "s_w1": s_w1, "s_w2": s_w2, "s_h": s_h,
     }
 

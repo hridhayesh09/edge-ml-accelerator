@@ -19,7 +19,8 @@
 
 module de10lite_top #(
     parameter CLK_HZ = 50_000_000,
-    parameter BAUD   = 2_000_000
+    parameter BAUD   = 2_000_000,
+    parameter MODEL_DIR = "../rtl/model/"   // MNIST weight files (relative to quartus/)
 ) (
     input  wire        MAX10_CLK1_50,
     input  wire [1:0]  KEY,
@@ -55,7 +56,8 @@ module de10lite_top #(
     accel_top #(
         .CLKS_PER_BIT(CLKS_PER_BIT),
         .N(8),
-        .MAX_M(256)
+        .MAX_M(256),
+        .MODEL_DIR(MODEL_DIR)
     ) u_accel (
         .clk(clk), .rst(rst),
         .uart_rx(ARDUINO_IO[0]),

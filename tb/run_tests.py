@@ -18,6 +18,10 @@ ROOT = Path(__file__).resolve().parent.parent
 RTL = ROOT / "rtl"
 TB = ROOT / "tb"
 
+# The on-chip MNIST weights are loaded from these files ($readmemh); the
+# simulator needs the absolute path (Quartus uses the default relative one).
+MODEL_DIR = '"' + (RTL / "model").as_posix() + '/"'
+
 RTL_CORE = [
     RTL / "uart_rx.v",
     RTL / "uart_tx.v",
@@ -25,6 +29,7 @@ RTL_CORE = [
     RTL / "pe.v",
     RTL / "systolic_array.v",
     RTL / "sdp_ram.v",
+    RTL / "rom.v",
     RTL / "accel_core.v",
     RTL / "accel_top.v",
     RTL / "de10lite_top.v",
@@ -38,8 +43,8 @@ SUITES = {
     "fifo":   ("sync_fifo",      [],                 {"DEPTH": 16},        "test_fifo"),
     "pe":     ("pe",             [],                 {},                   "test_pe"),
     "array":  ("systolic_array", [],                 {"N": 8},             "test_array"),
-    "system": ("accel_top",      [],                 {"CLKS_PER_BIT": 8, "N": 8, "MAX_M": 256, "RX_TIMEOUT": 3000}, "test_system"),
-    "board":  ("tb_board",       [TB / "tb_board.v"], {},                  "test_board"),
+    "system": ("accel_top",      [],                 {"CLKS_PER_BIT": 8, "N": 8, "MAX_M": 256, "RX_TIMEOUT": 3000, "MODEL_DIR": MODEL_DIR}, "test_system"),
+    "board":  ("tb_board",       [TB / "tb_board.v"], {"MODEL_DIR": MODEL_DIR}, "test_board"),
 }
 
 

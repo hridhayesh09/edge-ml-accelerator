@@ -255,3 +255,56 @@ async def link_errors_recovered(dut):
     tb.faults = {2: ("corrupt", 30), 9: ("drop", 100), 14: ("corrupt", 0)}
     _, st = await tb.matmul(a, w)
     assert st.retries == 3, st.retries
+
+
+# ---------------------------------------------------------------------------
+# On-chip MNIST (INFER)
+# ---------------------------------------------------------------------------
+
+def mnist_reference(images):
+    from mnist_common import int8_forward, numpy_int_matmul
+    q = dict(np.load(Path(__file__).resolve().parent.parent / "host" / "mnist_int8.npz"))
+    pred, _, logits = int8_forward(images, q, numpy_int_matmul)
+    return pred, logits
+
+
+def make_images(b, seed):
+    """Digit-like test images without downloading MNIST: random strokes."""
+    rng = np.random.default_rng(seed)
+    img = np.zeros((b, 784), dtype=np.uint8)
+    for i in range(b):
+        mask = rng.random(784) < rng.uniform(0.1, 0.3)
+        img[i, mask] = rng.integers(64, 256, size=int(mask.sum()))
+    return img
+
+
+@cocotb.test()
+async def infer_matches_numpy(dut):
+    """The whole network on chip: digits and all 10 logits per image match the
+    NumPy INT8 reference bit for bit, and the cycle count matches the formula."""
+    tb = SystemTB(dut)
+    await tb.start()
+    for b, seed in ((1, 1), (5, 2)):
+        images = make_images(b, seed)
+        digits, logits, st = await tb.run_program(P.infer_program(images, with_logits=True))
+        ref_pred, ref_logits = mnist_reference(images)
+        assert np.array_equal(logits, ref_logits), f"logits differ:\n{logits}\n{ref_logits}"
+        assert np.array_equal(digits, ref_pred), (digits, ref_pred)
+        assert st["compute_cycles"] == P.infer_cycles(b), (st["compute_cycles"], P.infer_cycles(b))
+        dut._log.info(f"INFER B={b}: digits {digits.tolist()}, {st['compute_cycles']} cycles")
+
+
+@cocotb.test()
+async def infer_bad_checksum_then_matmul(dut):
+    """A corrupted INFER replies EC; afterwards the shared array still does a
+    correct INFER and a correct UART matmul (the two modes don't interfere)."""
+    tb = SystemTB(dut)
+    await tb.start()
+    images = make_images(2, 3)
+    bad = bytearray(P.enc_infer(images))
+    bad[100] ^= 0x01
+    rx = await tb.xfer(bytes(bad), P.infer_reply_len(2))
+    assert rx[0] == P.RSP_BAD and P.checksum(rx[:-1]) == rx[-1], rx.hex()
+    digits, _, _ = await tb.run_program(P.infer_program(images))
+    assert np.array_equal(digits, mnist_reference(images)[0])
+    await tb.matmul(rand_int8(RNG, (9, 24)), rand_int8(RNG, (24, 16)))

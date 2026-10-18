@@ -21,13 +21,18 @@ CMD_LOAD_A = 0x41    # 'A'
 CMD_RUN = 0x52       # 'R'
 CMD_RUN_ACC = 0x55   # 'U'
 CMD_READ = 0x43      # 'C'
+CMD_INFER = 0x49     # 'I'  whole MNIST network on chip
+CMD_LOGITS = 0x4C    # 'L'  read the last INFER's logits
 
 RSP_PING = 0xA5
 RSP_DONE = 0xD0
 RSP_ERR = 0xEE
 RSP_BAD = 0xEC       # RUN refused: the last LOAD had a bad checksum or timed out
+RSP_INFER = 0xD1
 
-PROTOCOL_VERSION = 2
+PROTOCOL_VERSION = 3
+MAX_IMG = 64         # images per INFER batch (on-chip image buffer)
+IN_PIX = 784         # MNIST: 28 x 28 pixels
 PING_REPLY_LEN = 4
 RUN_REPLY_LEN = 5
 MAX_RETRIES = 5      # per output tile, before giving up
@@ -106,6 +111,91 @@ def dec_results(resp, m):
     if checksum(resp[:-1]) != resp[-1]:
         raise LinkError("result checksum mismatch")
     return np.frombuffer(resp[:-1], dtype="<i4").reshape(m, N).astype(np.int32)
+
+
+def enc_infer(images_u8):
+    """INFER: B raw MNIST images (uint8, B x 784). The board quantizes them."""
+    images_u8 = np.asarray(images_u8, dtype=np.uint8)
+    b = images_u8.shape[0]
+    assert images_u8.shape[1] == IN_PIX and 1 <= b <= MAX_IMG, images_u8.shape
+    body = bytes([b - 1]) + images_u8.tobytes()
+    return bytes([CMD_INFER]) + body + bytes([checksum(body)])
+
+
+def infer_reply_len(b):
+    return 1 + b + 4 + 1             # status, digits, cycle count, checksum
+
+
+def dec_infer(resp, b):
+    if len(resp) != infer_reply_len(b) or checksum(resp[:-1]) != resp[-1]:
+        raise LinkError(f"bad INFER reply: {resp[:8].hex()}...")
+    if resp[0] != RSP_INFER:
+        raise LinkError(f"INFER refused (status 0x{resp[0]:02X})")
+    digits = np.frombuffer(resp[1:1 + b], dtype=np.uint8).astype(np.int64)
+    cycles = int.from_bytes(resp[1 + b:5 + b], "little")
+    return digits, cycles
+
+
+def enc_read_logits():
+    return bytes([CMD_LOGITS])
+
+
+def logits_len(b):
+    return b * 10 * 4 + 1
+
+
+def dec_logits(resp, b):
+    if len(resp) != logits_len(b) or checksum(resp[:-1]) != resp[-1]:
+        raise LinkError("bad READ_LOGITS reply")
+    return np.frombuffer(resp[:-1], dtype="<i4").reshape(b, 10).astype(np.int64)
+
+
+def infer_cycles(b, n=N):
+    """Exact INFER cycle count, from the controller's state machine:
+    each weight tile takes 1 (setup) + N+1 (load rows) + B (feed) + 2N (drain),
+    each finished output slice B*(N+4) for post-processing (read, latch, N
+    lanes, 2 to empty the pipeline), argmax 11 per image."""
+    kt1, nt1, kt2, nt2 = IN_PIX // n, 64 // n, 64 // n, -(-10 // n)
+    tile = 3 * n + b + 2
+    post = b * (n + 4)
+    return nt1 * (kt1 * tile + post) + nt2 * (kt2 * tile + post) + 11 * b
+
+
+def infer_program(images_u8, with_logits=False):
+    """Classify any number of images with the on-chip network, in batches of
+    up to MAX_IMG. Same generator protocol (and retry rules) as matmul_program.
+    Returns (digits, logits or None, stats dict)."""
+    images_u8 = np.asarray(images_u8, dtype=np.uint8)
+    total = images_u8.shape[0]
+    digits = np.zeros(total, dtype=np.int64)
+    logits = np.zeros((total, 10), dtype=np.int64) if with_logits else None
+    st = {"batches": 0, "compute_cycles": 0, "bytes_sent": 0, "bytes_received": 0, "retries": 0}
+    for i0 in range(0, total, MAX_IMG):
+        batch = images_u8[i0:i0 + MAX_IMG]
+        b = batch.shape[0]
+        for attempt in range(MAX_RETRIES + 1):
+            try:
+                tx = enc_infer(batch)
+                resp = yield tx, infer_reply_len(b)
+                st["bytes_sent"] += len(tx)
+                st["bytes_received"] += len(resp)
+                d, cyc = dec_infer(resp, b)
+                if with_logits:
+                    resp = yield enc_read_logits(), logits_len(b)
+                    st["bytes_sent"] += 1
+                    st["bytes_received"] += len(resp)
+                    logits[i0:i0 + b] = dec_logits(resp, b)
+                digits[i0:i0 + b] = d
+                st["batches"] += 1
+                st["compute_cycles"] += cyc
+                break
+            except (RetryTile, LinkError) as e:
+                if attempt == MAX_RETRIES:
+                    raise LinkError(f"INFER batch failed {MAX_RETRIES + 1} times") from e
+                st["retries"] += 1
+                if isinstance(e, LinkError):
+                    yield RESYNC, 0
+    return digits, logits, st
 
 
 # ---------------------------------------------------------------------------

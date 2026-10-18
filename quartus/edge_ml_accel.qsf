@@ -11,6 +11,11 @@ set_global_assignment -name ERROR_CHECK_FREQUENCY_DIVISOR 256
 set_global_assignment -name NUM_PARALLEL_PROCESSORS ALL
 set_global_assignment -name VERILOG_INPUT_VERSION SYSTEMVERILOG_2005
 
+# The MNIST weights are preloaded into block RAM ($readmemh). On MAX 10 that
+# only works in a configuration mode with memory initialization ("ERAM");
+# without it Quartus silently builds the 50 KB weight ROM out of logic.
+set_global_assignment -name INTERNAL_FLASH_UPDATE_MODE "SINGLE IMAGE WITH ERAM"
+
 # Source files
 set_global_assignment -name VERILOG_FILE ../rtl/uart_rx.v
 set_global_assignment -name VERILOG_FILE ../rtl/uart_tx.v
@@ -18,6 +23,7 @@ set_global_assignment -name VERILOG_FILE ../rtl/sync_fifo.v
 set_global_assignment -name VERILOG_FILE ../rtl/pe.v
 set_global_assignment -name VERILOG_FILE ../rtl/systolic_array.v
 set_global_assignment -name VERILOG_FILE ../rtl/sdp_ram.v
+set_global_assignment -name VERILOG_FILE ../rtl/rom.v
 set_global_assignment -name VERILOG_FILE ../rtl/accel_core.v
 set_global_assignment -name VERILOG_FILE ../rtl/accel_top.v
 set_global_assignment -name VERILOG_FILE ../rtl/de10lite_top.v

@@ -25,6 +25,9 @@ class ArrayTB:
         dut.w_we.value = 0
         dut.w_addr.value = 0
         dut.w_data.value = 0
+        dut.w_row_we.value = 0
+        dut.w_row_idx.value = 0
+        dut.w_row_data.value = 0
         dut.in_valid.value = 0
         dut.a_row.value = 0
         dut.rst.value = 1
@@ -55,6 +58,16 @@ class ArrayTB:
                 await RisingEdge(dut.clk)
         dut.w_we.value = 0
 
+    async def load_weight_rows(self, w):
+        """Row-wide loading (what the on-chip MNIST engine uses): one PE row per clock."""
+        dut = self.dut
+        for i in range(self.n):
+            dut.w_row_we.value = 1
+            dut.w_row_idx.value = i
+            dut.w_row_data.value = pack(w[i, :], 8)
+            await RisingEdge(dut.clk)
+        dut.w_row_we.value = 0
+
     async def stream(self, a, bubble_prob=0.0):
         """Feed the rows of a, optionally with idle cycles in between."""
         dut = self.dut
@@ -70,8 +83,10 @@ class ArrayTB:
         dut.in_valid.value = 0
         dut.a_row.value = 0
 
-    async def run(self, a, w, bubble_prob=0.0, load=True):
-        if load:
+    async def run(self, a, w, bubble_prob=0.0, load=True, rows=False):
+        if load and rows:
+            await self.load_weight_rows(w)
+        elif load:
             await self.load_weights(w)
         self.outputs.clear()
         await self.stream(a, bubble_prob)
@@ -159,3 +174,17 @@ async def back_to_back_same_weights(dut):
         a = rand_int8(RNG, (int(RNG.integers(1, 65)), tb.n))
         await tb.run(a, w, load=False)
     dut._log.info(f"array total: {STATS['matrices']} matrices, {STATS['rows']} rows verified")
+
+
+@cocotb.test()
+async def row_wide_weight_load(dut):
+    """Weights loaded a whole PE row per clock give the same results, and the
+    two load paths can be mixed."""
+    tb = ArrayTB(dut)
+    await tb.start()
+    n = tb.n
+    for i in range(100):
+        m = int(RNG.integers(1, 65))
+        a = rand_int8(RNG, (m, n), ["uniform", "extreme", "sparse"][i % 3])
+        w = rand_int8(RNG, (n, n), ["uniform", "extreme"][i % 2])
+        await tb.run(a, w, rows=(i % 4 != 3))

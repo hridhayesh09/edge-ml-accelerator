@@ -5,14 +5,17 @@
 A small TPU-style matrix engine in Verilog: an **8x8 systolic array of INT8 multiply-accumulate
 units** running on a Terasic DE10-Lite (Intel MAX 10) at 50 MHz.
 
-A laptop sends matrices to the FPGA over a serial link, the 64 processing elements multiply them
-in parallel, and the results come back. It runs both layers of an MNIST digit classifier and
-matches NumPy bit for bit.
+It runs a complete MNIST digit classifier on the FPGA: the laptop sends an image over a serial
+link and gets the digit back. The weights live in on-chip memory, and every layer, the
+requantization in between and the final argmax run in hardware, matching NumPy bit for bit.
+It can also act as a general INT8 matrix-multiply engine.
 
 ```
-Laptop (Python) --USB serial--> DE10-Lite
+Laptop --image (784 bytes)--> DE10-Lite --digit (1 byte)--> Laptop
                                   |
-  UART -> FIFO -> controller -> 8x8 PE grid -> output RAM -> FIFO -> UART
+  UART -> pixel quantizer -> image RAM -> 8x8 PE grid <- weight ROM (51 KB)
+                                              |
+                     output RAM -> requantize + ReLU -> hidden RAM -> layer 2 -> argmax
 ```
 
 ## Results
@@ -25,37 +28,36 @@ All numbers below come from simulation, Quartus reports, or runs on the real boa
 | | |
 | --- | --- |
 | Matrix products | all bit-exact with NumPy (up to 256x256x64) |
-| MNIST | bit-exact with NumPy on both layers, 1,000 test images |
-| MNIST accuracy on the board | 97.9% on those 1,000 images (same as NumPy) |
-| MNIST compute time | **20 us per image** (batch of 64) |
-| MNIST end-to-end time | **42 ms per image** at 2 Mbaud (was 665 ms at 115200 baud) |
-| 1,000 MNIST images end to end | 36 s (was 10 min) |
+| MNIST accuracy on the board | **97.67% on all 10,000 test images**, every logit bit-exact with NumPy |
+| MNIST end-to-end time | **3.95 ms per image** (first version: 665 ms, 168x slower) |
+| One image, send to digit | 4.8 ms |
+| MNIST compute time | 25 us per image (both layers, requantize, argmax) |
 | PE utilization | 94.1% for 256-row tiles |
 
 **FPGA build (Quartus Prime Lite 25.1)**
 
 | | |
 | --- | --- |
-| Max clock (Fmax) | **70.35 MHz** (runs at 50 MHz) |
-| Logic elements | 3,391 of 49,760 (7%) |
-| Hardware multipliers | 64 of 288 (one per PE) |
-| Memory blocks (M9K) | 21 of 182 |
-| Power | 224 mW (Quartus estimate) |
+| Max clock (Fmax) | **64.72 MHz** (runs at 50 MHz) |
+| Logic elements | 5,262 of 49,760 (11%) |
+| Hardware multipliers | 68 of 288 (64 PEs + requantize) |
+| Memory blocks (M9K) | 159 of 182 (weights, image buffer) |
+| Power | 321 mW (Quartus estimate) |
 
 **Simulation**
 
 | | |
 | --- | --- |
-| Tests | 35 tests in 7 suites, all passing |
+| Tests | 39 tests in 7 suites, all passing |
 | Random matrix products checked | 1,100+ bit-exact with NumPy |
 | MNIST accuracy (10,000 images) | float32 97.68%, INT8 97.67% |
 | Peak throughput | 6.4 GOPS (64 MACs x 2 ops x 50 MHz) |
 
-**Edge comparison (same two MNIST layers, batch of 64)**
+**Edge comparison (same MNIST network, batch of 64)**
 
 | Platform | Compute time | GOPS | Power | GOPS/W |
 | --- | --- | --- | --- | --- |
-| DE10-Lite FPGA | 1.28 ms | 5.08 | 224 mW (estimate) | 22.6 |
+| DE10-Lite FPGA | 1.61 ms (whole network) | 4.05 | 321 mW (estimate) | 12.6 |
 | Raspberry Pi | _TBD_ | _TBD_ | _TBD_ | _TBD_ |
 | NVIDIA Jetson | _TBD_ | _TBD_ | _TBD_ | _TBD_ |
 
@@ -63,6 +65,10 @@ All numbers below come from simulation, Quartus reports, or runs on the real boa
 
 - **Systolic array:** weights stay inside the 64 PEs; activations flow in from the left and
   partial sums flow down. After a short pipeline fill, one result row comes out every clock.
+- **Whole network on chip:** the 51 KB of INT8 weights are built into the bitstream as block-RAM
+  ROMs. For each 8x8 weight tile the controller loads one PE row per clock, streams the images
+  through, and accumulates; a 3-stage pipeline then does bias + integer requantize + ReLU, and
+  an argmax picks the digit. See [docs/protocol.md](docs/protocol.md).
 - **Tiling:** big matrices are cut into 8x8 tiles. Long dot products (like MNIST's 784 inputs)
   are added up inside the FPGA, so only final results go back to the laptop.
 - **Serial link:** 2 Mbaud UART (exactly 25 clocks per bit) with FIFOs in both directions. Every transfer carries a
@@ -98,7 +104,7 @@ python tb/run_tests.py
 ```
 cd host
 python demo_matmul.py --port COM8
-python mnist_fpga.py --port COM8 --num 64
+python mnist_fpga.py --port COM8 --num 10000
 ```
 
 **No board?** Use `--port sim` to run the same commands on a software model.

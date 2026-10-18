@@ -83,3 +83,15 @@ Format: **symptom → cause → fix → lesson**.
   answer stays exact. On the board: 8/8 matmuls bit-exact with v2.
 - **Lesson:** a long unframed byte stream needs error detection (a checksum per tile) and a way to
   resynchronize; "it passed once" isn't the same as "the link is reliable".
+
+### 4. On-chip MNIST build used 89% of the logic and missed timing
+- **Symptom:** after adding the on-chip network, Quartus reported 44,106 logic elements (up from
+  3,391) and 48 MHz Fmax, below the 50 MHz clock.
+- **Cause:** "MIF is not supported for the selected family". A MAX 10 can only preload block RAM
+  at power-up in a configuration mode with memory initialization. In the default mode Quartus
+  quietly built the 50 KB weight ROM out of logic elements instead.
+- **Fix:** `INTERNAL_FLASH_UPDATE_MODE "SINGLE IMAGE WITH ERAM"` in the .qsf. Logic dropped to
+  5,176 elements. Timing still missed (47 MHz): the between-layer math (select, add, multiply,
+  shift, clip) was one long path, so it was split into a 3-stage pipeline -> 64.7 MHz.
+- **Lesson:** read the synthesis messages, not just "compilation successful". A RAM that doesn't
+  map to block RAM shows up as a huge logic count, and timing reports name the slow path.

@@ -42,6 +42,16 @@ def check_mnist():
         assert np.array_equal(got, want), "MNIST pipeline differs from NumPy"
 
 
+def check_infer():
+    q = dict(np.load(__file__.replace("check_sim.py", "mnist_int8.npz")))
+    x = np.random.default_rng(2).integers(0, 256, (130, 784)).astype(np.uint8)   # 3 batches
+    ref_pred, _, ref_logits = int8_forward(x, q, numpy_int_matmul)
+    for port in ("sim", "sim-faulty:0.3"):
+        digits, logits, _ = open_accelerator(port).infer(x, with_logits=True)
+        assert np.array_equal(digits, ref_pred) and np.array_equal(logits, ref_logits), port
+    assert P.infer_cycles(64) == 80384
+
+
 def main():
     print("matmuls on the model:", "ok", f"(retries: {check_matmuls('sim')})")
     r = check_matmuls("sim-faulty:0.02")
@@ -49,6 +59,8 @@ def main():
     assert r > 0, "fault injection never triggered"
     check_mnist()
     print("MNIST pipeline on the model: ok")
+    check_infer()
+    print("INFER (whole network) on the model, with fault injection: ok")
     return 0
 
 

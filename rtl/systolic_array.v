@@ -26,10 +26,17 @@ module systolic_array #(
     input  wire                 clk,
     input  wire                 rst,
 
-    // weight loading: weight index = i*N + j  (row i = input k, column j = output n)
+    // weight loading, one byte at a time (from the UART):
+    //   weight index = i*N + j  (row i = input k, column j = output n)
     input  wire                 w_we,
     input  wire [$clog2(N*N)-1:0] w_addr,
     input  wire [7:0]           w_data,
+
+    // weight loading, one whole row of PEs per clock (from the on-chip
+    // weight ROM): w_row_data[8*j +: 8] goes into PE[w_row_idx][j]
+    input  wire                 w_row_we,
+    input  wire [$clog2(N)-1:0] w_row_idx,
+    input  wire [8*N-1:0]       w_row_data,
 
     // activation input: a_row[8*i +: 8] = A[m][i]
     input  wire                 in_valid,
@@ -86,8 +93,8 @@ module systolic_array #(
             for (j = 0; j < N; j = j + 1) begin : g_col
                 pe u_pe (
                     .clk  (clk),
-                    .w_we (w_we && (w_addr == i*N + j)),
-                    .w_in (w_data),
+                    .w_we ((w_we && (w_addr == i*N + j)) || (w_row_we && (w_row_idx == i))),
+                    .w_in (w_row_we ? w_row_data[8*j +: 8] : w_data),
                     .a_in (a_h[i*(N+1) + j]),
                     .a_out(a_h[i*(N+1) + j + 1]),
                     .p_in (p_v[i*N + j]),
