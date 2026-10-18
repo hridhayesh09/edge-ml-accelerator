@@ -49,7 +49,7 @@ def check_infer():
     for port in ("sim", "sim-faulty:0.3"):
         digits, logits, _ = open_accelerator(port).infer(x, with_logits=True)
         assert np.array_equal(digits, ref_pred) and np.array_equal(logits, ref_logits), port
-    assert P.infer_cycles(64) == 80384
+    assert P.infer_cycles(64, n=8) == 80384
 
 
 def main():

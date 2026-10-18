@@ -7,13 +7,13 @@ Commands are ASCII letters so they are easy to spot in a serial terminal.
 
 | Command | Byte | Data sent after it | Board replies with |
 | --- | --- | --- | --- |
-| PING | `P` 0x50 | none | 4 bytes: `A5`, N (8), MAX_M-1 (255), version (3) |
+| PING | `P` 0x50 | none | 4 bytes: `A5`, N (16 on the board), MAX_M-1 (255), version (3). The host sizes its tiles from N |
 | LOAD_W | `W` 0x57 | 64 bytes: int8 weights, row-major `W[k][n]`, then 1 checksum byte | nothing |
 | LOAD_A | `A` 0x41 | 1 byte M-1, then M x 8 bytes: int8 activations, row-major `A[m][k]`, then 1 checksum byte | nothing |
 | RUN | `R` 0x52 | none | 5 bytes: `D0` + uint32 cycle count, or `EC 00 00 00 00` if refused |
 | RUN_ACC | `U` 0x55 | none | 5 bytes: `D0` + uint32 cycle count, or `EC 00 00 00 00` if refused |
 | READ_C | `C` 0x43 | none | M x 8 int32 results, row-major `C[m][n]`, 4 bytes each, then 1 checksum byte |
-| INFER | `I` 0x49 | 1 byte B-1, then B x 784 raw pixels (uint8, 0..255), then 1 checksum byte. B = 1..64 | `D1`, B digits (0..9), uint32 cycle count, checksum. `EC` instead of `D1` (digits and count zero) if the checksum was wrong |
+| INFER | `I` 0x49 | 1 byte B-1, then B x 784 raw pixels (uint8, 0..255), then 1 checksum byte. B = 1..32 | `D1`, B digits (0..9), uint32 cycle count, checksum. `EC` instead of `D1` (digits and count zero) if the checksum was wrong |
 | READ_LOGITS | `L` 0x4C | none | B x 10 int32 logits of the last INFER, row-major, then 1 checksum byte |
 | anything else | | | 1 byte: `EE` |
 
@@ -35,17 +35,18 @@ digits back: 784 bytes in and 1 byte out per image, instead of about 2 KB per we
 What the board does for a batch of B images:
 
 1. Quantize each pixel with a 256-entry lookup table (0..255 -> 0..127) and store the batch.
-2. Layer 1, for each 8-wide slice of the 64 hidden units: for each of the 98 8-wide slices of
-   the 784 inputs, load the 8x8 weight tile from ROM (one PE row per clock) and stream all B
-   images' slice through the array, accumulating in the output buffer.
+2. Layer 1, for each N-wide slice of the 64 hidden units: for each of the 784/N N-wide slices
+   of the inputs, load the N x N weight tile from ROM (one PE row per clock) and stream all B
+   images' slice through the array, accumulating in the output buffer. (N = 16 on the board:
+   4 x 49 = 196 tiles.)
 3. Requantize each hidden value: `clip((acc + b1) * 9710 + 2^23 >> 24, 0, 127)` (the clip at 0
    is the ReLU). This is integer math, so it matches the NumPy reference bit for bit.
 4. Layer 2 the same way from the hidden values, then `logit = acc + b2`.
 5. Argmax over the 10 logits gives the digit.
 
 The cycle count is exact (checked in the tests): each weight tile takes `3N + B + 2` cycles,
-each finished output slice `B * (N + 4)`, and the argmax `11 * B`. For B = 64 that is 80,384
-cycles = 1.61 ms at 50 MHz.
+each finished output slice `B * (N + 4)`, and the argmax `11 * B`. On the 16x16 board a batch
+of 32 takes 19,952 cycles = 0.40 ms at 50 MHz (12.5 us per image).
 
 ## Link protection (version 2)
 

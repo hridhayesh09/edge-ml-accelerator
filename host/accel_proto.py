@@ -12,8 +12,15 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-N = 8            # array size (8x8)
+N = 16           # array size (N x N). The board reports it in PING; set_array_size() updates it.
 MAX_M = 256      # rows the activation/output buffers hold
+
+
+def set_array_size(n):
+    """Use an N x N array (the board's PING reply says which; the simulation
+    testbenches build both 8x8 and 16x16)."""
+    global N
+    N = int(n)
 
 CMD_PING = 0x50      # 'P'
 CMD_LOAD_W = 0x57    # 'W'
@@ -31,7 +38,7 @@ RSP_BAD = 0xEC       # RUN refused: the last LOAD had a bad checksum or timed ou
 RSP_INFER = 0xD1
 
 PROTOCOL_VERSION = 3
-MAX_IMG = 64         # images per INFER batch (on-chip image buffer)
+MAX_IMG = 32         # images per INFER batch (on-chip image buffer; block RAM limits it at 16x16)
 IN_PIX = 784         # MNIST: 28 x 28 pixels
 PING_REPLY_LEN = 4
 RUN_REPLY_LEN = 5
@@ -150,11 +157,12 @@ def dec_logits(resp, b):
     return np.frombuffer(resp[:-1], dtype="<i4").reshape(b, 10).astype(np.int64)
 
 
-def infer_cycles(b, n=N):
+def infer_cycles(b, n=None):
     """Exact INFER cycle count, from the controller's state machine:
     each weight tile takes 1 (setup) + N+1 (load rows) + B (feed) + 2N (drain),
     each finished output slice B*(N+4) for post-processing (read, latch, N
     lanes, 2 to empty the pipeline), argmax 11 per image."""
+    n = n or N
     kt1, nt1, kt2, nt2 = IN_PIX // n, 64 // n, 64 // n, -(-10 // n)
     tile = 3 * n + b + 2
     post = b * (n + 4)

@@ -1,18 +1,18 @@
-Fitter Status : Successful - Sun Oct 18 10:12:27 2026
+Fitter Status : Successful - Sun Oct 18 10:38:24 2026
 Quartus Prime Version : 25.1std.0 Build 1129 10/21/2025 SC Lite Edition
 Revision Name : edge_ml_accel
 Top-level Entity Name : de10lite_top
 Family : MAX 10
 Device : 10M50DAF484C7G
 Timing Models : Final
-Total logic elements : 5,262 / 49,760 ( 11 % )
-    Total combinational functions : 4,049 / 49,760 ( 8 % )
-    Dedicated logic registers : 3,390 / 49,760 ( 7 % )
-Total registers : 3390
+Total logic elements : 29,534 / 49,760 ( 59 % )
+    Total combinational functions : 27,140 / 49,760 ( 55 % )
+    Dedicated logic registers : 11,378 / 49,760 ( 23 % )
+Total registers : 11378
 Total pins : 55 / 360 ( 15 % )
 Total virtual pins : 0
-Total memory bits : 960,128 / 1,677,312 ( 57 % )
-Embedded Multiplier 9-bit elements : 68 / 288 ( 24 % )
+Total memory bits : 811,616 / 1,677,312 ( 48 % )
+Embedded Multiplier 9-bit elements : 132 / 288 ( 46 % )
 Total PLLs : 0 / 4 ( 0 % )
 UFM blocks : 0 / 1 ( 0 % )
 ADC blocks : 0 / 2 ( 0 % )

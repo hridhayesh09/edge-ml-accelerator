@@ -20,6 +20,8 @@
 module de10lite_top #(
     parameter CLK_HZ = 50_000_000,
     parameter BAUD   = 2_000_000,
+    parameter N      = 16,          // array size: N x N processing elements
+    parameter MAX_IMG = 32,         // images per INFER batch (block RAM is the limit at 16x16)
     parameter MODEL_DIR = "../rtl/model/"   // MNIST weight files (relative to quartus/)
 ) (
     input  wire        MAX10_CLK1_50,
@@ -55,8 +57,9 @@ module de10lite_top #(
 
     accel_top #(
         .CLKS_PER_BIT(CLKS_PER_BIT),
-        .N(8),
+        .N(N),
         .MAX_M(256),
+        .MAX_IMG(MAX_IMG),
         .MODEL_DIR(MODEL_DIR)
     ) u_accel (
         .clk(clk), .rst(rst),

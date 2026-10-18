@@ -13,6 +13,7 @@ module accel_top #(
     parameter MAX_M        = 256,
     parameter FIFO_DEPTH   = 64,
     parameter RX_TIMEOUT   = 2_500_000,  // 50 ms at 50 MHz, see accel_core.v
+    parameter MAX_IMG      = 64,         // images per INFER batch
     parameter MODEL_DIR    = "../rtl/model/"   // MNIST weight files (relative to quartus/)
 ) (
     input  wire clk,
@@ -51,7 +52,8 @@ module accel_top #(
     wire       txf_full;
     wire       core_err;
 
-    accel_core #(.N(N), .MAX_M(MAX_M), .RX_TIMEOUT(RX_TIMEOUT), .MODEL_DIR(MODEL_DIR)) u_core (
+    accel_core #(.N(N), .MAX_M(MAX_M), .RX_TIMEOUT(RX_TIMEOUT), .MAX_IMG(MAX_IMG),
+                 .MODEL_DIR(MODEL_DIR)) u_core (
         .clk(clk), .rst(rst),
         .rx_empty(rxf_empty), .rx_data(rxf_dout), .rx_rd(rxf_rd),
         .tx_full(txf_full), .tx_data(core_tx_data), .tx_wr(core_tx_wr),

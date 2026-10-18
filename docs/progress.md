@@ -11,6 +11,7 @@ files are in [results/](../results/).
 | 4. Faster link | 115200 -> 2,000,000 baud | **42 ms/image** (16x faster) |
 | 5. CI | GitHub Actions runs every test on each push | green badge on the README |
 | 6. Whole network on the FPGA | weights in on-chip ROM, requantize/ReLU/argmax in hardware | **3.95 ms/image**, 97.67% on all 10,000 test images, bit-exact |
+| 7. 16x16 array | 256 PEs, half with logic multipliers to fit the DSP blocks | **22.8 GOPS** matmul (3.8x), MNIST compute 12.5 us/image (2x) |
 
 ## 1. Simulation (before the board arrived)
 
@@ -85,3 +86,26 @@ on the FPGA) attacks.
 
 The serial link is still 99.4% of the end-to-end time: 784 bytes at 2 Mbaud take 3.9 ms, while
 the network itself takes 25 us per image.
+
+## 7. Scaling to 16x16 (256 PEs)
+
+- The RTL was already parameterized by N; the host now reads N from the board's PING reply and
+  sizes its tiles to match. The tests build both 8x8 and 16x16.
+- First 16x16 compile didn't fit (bug #5): one PE per DSP block allows at most 144. Fix: 128 PEs
+  on DSP multipliers, 128 on a hand-written shift-and-add multiplier in logic (exhaustively
+  checked), and the INFER batch reduced from 64 to 32 to free block RAM.
+
+| Measurement | 8x8 | 16x16 | Change |
+| --- | --- | --- | --- |
+| Peak compute | 6.4 GOPS | 25.6 GOPS | 4x |
+| Matmul throughput (256-row tiles, on the board) | 6.02 GOPS | **22.76 GOPS** | 3.8x |
+| 256x256x64 matmul, end to end | 3.15 s | 1.75 s | 1.8x |
+| MNIST compute per image | 25.2 us | **12.5 us** | 2x |
+| MNIST end to end per image | 3.95 ms | 3.94 ms | (serial link bound) |
+| MNIST accuracy on the board (10,000 images) | 97.67%, bit-exact | 97.67%, bit-exact | |
+| Logic / DSP multipliers / M9K / Fmax | 5,262 / 68 / 159 / 64.7 MHz | 29,534 / 132 / 152 / 66.9 MHz | |
+| Power (Quartus estimate) | 321 mW | 443 mW | |
+
+End-to-end MNIST time didn't move: 99.7% of it is sending 784 bytes over the serial link. The
+bigger array matters for compute-heavy work (matmuls, bigger batches); for single images the
+next bottleneck is the link itself.

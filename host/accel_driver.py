@@ -19,7 +19,11 @@ import numpy as np
 import accel_proto as P
 
 CLK_HZ = 50_000_000
-PEAK_OPS = 2 * P.N * P.N * CLK_HZ   # 64 MACs/cycle, 2 ops per MAC = 6.4 GOPS
+
+
+def peak_ops():
+    """N*N MACs per cycle, 2 ops per MAC: 25.6 GOPS for 16x16 at 50 MHz."""
+    return 2 * P.N * P.N * CLK_HZ
 
 
 class _Base:
@@ -89,6 +93,7 @@ class Accelerator(_Base):
         self.ser = serial.Serial(port, baud, timeout=1.0)
         time.sleep(0.05)
         self.ser.reset_input_buffer()
+        P.set_array_size(self.ping()["n"])        # tile size follows the board's array
 
     def resync(self):
         # The board drops a stalled LOAD after 50 ms of silence. Wait longer
@@ -228,7 +233,7 @@ def summarize(st, wall_s):
         "compute_cycles": st.compute_cycles,
         "compute_time_s": compute_s,
         "gops_compute": ops / compute_s / 1e9 if compute_s else 0.0,
-        "peak_gops": PEAK_OPS / 1e9,
+        "peak_gops": peak_ops() / 1e9,
         "pe_utilization": st.useful_macs / (st.compute_cycles * P.N * P.N) if st.compute_cycles else 0.0,
         "bytes_sent": st.bytes_sent,
         "bytes_received": st.bytes_received,

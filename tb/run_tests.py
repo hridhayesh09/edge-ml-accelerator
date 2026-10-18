@@ -35,7 +35,7 @@ RTL_CORE = [
     RTL / "de10lite_top.v",
 ]
 
-# suite name -> (top-level module, extra sources, parameters, python test module)
+# suite name -> (top-level module, extra sources, parameters, python test module[, test filter regex])
 SUITES = {
     "uart":   ("tb_uart",        [TB / "tb_uart.v"], {"CLKS_PER_BIT": 16}, "test_uart"),
     # same UART tests at the board's real setting: 50 MHz / 2 Mbaud = 25 clocks per bit
@@ -43,13 +43,18 @@ SUITES = {
     "fifo":   ("sync_fifo",      [],                 {"DEPTH": 16},        "test_fifo"),
     "pe":     ("pe",             [],                 {},                   "test_pe"),
     "array":  ("systolic_array", [],                 {"N": 8},             "test_array"),
+    "array16": ("systolic_array", [],                {"N": 16},            "test_array"),
     "system": ("accel_top",      [],                 {"CLKS_PER_BIT": 8, "N": 8, "MAX_M": 256, "RX_TIMEOUT": 3000, "MODEL_DIR": MODEL_DIR}, "test_system"),
+    # the board's real 16x16 array: a focused subset (256 PEs simulate ~4x slower)
+    "system16": ("accel_top",    [],                 {"CLKS_PER_BIT": 8, "N": 16, "MAX_M": 256, "RX_TIMEOUT": 3000, "MODEL_DIR": MODEL_DIR}, "test_system",
+                 "ping|single_tile|extreme_values|tiled_shapes|full_buffer|commands_back|bad_checksum|lost_byte|infer_"),
     "board":  ("tb_board",       [TB / "tb_board.v"], {"MODEL_DIR": MODEL_DIR}, "test_board"),
 }
 
 
 def run_suite(name, waves=False):
-    top, extra, params, module = SUITES[name]
+    top, extra, params, module = SUITES[name][:4]
+    test_filter = SUITES[name][4] if len(SUITES[name]) > 4 else None
     runner = get_runner("icarus")
     build_dir = TB / "sim_build" / name
     runner.build(
@@ -67,6 +72,7 @@ def run_suite(name, waves=False):
         test_dir=TB,
         build_dir=build_dir,
         waves=waves,
+        test_filter=test_filter,
     )
     return results
 

@@ -14,10 +14,12 @@ Neural network layers are mostly matrix multiplication: `C = A x W`.
 For an M x K matrix times a K x N matrix, every output is a dot product of length K,
 so there are M x K x N multiply-accumulates (MACs).
 
-A CPU does a few MACs per cycle. This design does **64 per cycle** with an 8x8 grid of
+A CPU does a few MACs per cycle. This design does **256 per cycle** with a 16x16 grid of
 processing elements (PEs), each doing one multiply and one add every clock.
 
-At 50 MHz: 64 MACs x 2 ops (multiply + add) x 50 million cycles/s = **6.4 GOPS peak**.
+At 50 MHz: 256 MACs x 2 ops (multiply + add) x 50 million cycles/s = **25.6 GOPS peak**.
+(The first version was 8x8: 64 MACs, 6.4 GOPS. The RTL is parameterized by N, and the
+tests build both sizes.)
 
 ## 2. The processing element (`rtl/pe.v`)
 

@@ -48,6 +48,9 @@ module systolic_array #(
     output wire [32*N-1:0]      c_row
 );
     localparam LAT = 2 * N - 1;
+    // MAX 10 10M50: 144 DSP blocks, one PE each (see pe.v). Leave a few for the
+    // requantize multiplier; build the remaining PEs' multipliers in logic.
+    localparam DSP_PES = (N * N <= 128) ? N * N : 128;
 
     // a_h: horizontal activation wires, N rows with N+1 taps each
     //   a_h[i*(N+1) + j] = activation entering PE[i][j]
@@ -91,7 +94,7 @@ module systolic_array #(
 
         for (i = 0; i < N; i = i + 1) begin : g_row
             for (j = 0; j < N; j = j + 1) begin : g_col
-                pe u_pe (
+                pe #(.USE_DSP((i * N + j) < DSP_PES)) u_pe (
                     .clk  (clk),
                     .w_we ((w_we && (w_addr == i*N + j)) || (w_row_we && (w_row_idx == i))),
                     .w_in (w_row_we ? w_row_data[8*j +: 8] : w_data),

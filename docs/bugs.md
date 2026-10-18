@@ -95,3 +95,17 @@ Format: **symptom → cause → fix → lesson**.
   shift, clip) was one long path, so it was split into a 3-stage pipeline -> 64.7 MHz.
 - **Lesson:** read the synthesis messages, not just "compilation successful". A RAM that doesn't
   map to block RAM shows up as a huge logic count, and timing reports name the slow path.
+
+### 5. 16x16 array didn't fit: "Can't find legal locations for 99 DSP block slices"
+- **Symptom:** 260 of 288 9-bit multipliers used, yet the fitter failed; block RAM was also at
+  182/182.
+- **Cause:** a MAX 10 DSP block holds two 9x9 multipliers only if they share controls. Each PE's
+  weight register (packed into the DSP block) has its own load enable, so effectively one PE fits
+  per block: 144 blocks for 256 PEs. A `multstyle = "logic"` hint to push some multipliers into
+  logic was silently ignored.
+- **Fix:** half the PEs (128) keep DSP multipliers; the other 128 use a shift-and-add multiplier
+  written out explicitly (no `*`, so Quartus can't map it to DSP). It matches the DSP version on
+  all 65,536 int8 x int8 input pairs. The INFER batch went from 64 to 32 images to free block RAM.
+  Result: 132 DSP multipliers, 59% logic, 152/182 M9K, 66.9 MHz.
+- **Lesson:** resource counts aren't the whole story; placement rules matter. Check the fitter
+  report, and don't trust synthesis hints without confirming they took effect.

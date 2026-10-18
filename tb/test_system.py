@@ -44,6 +44,7 @@ class SystemTB:
         self.dut.rst.value = 0
         await ClockCycles(self.dut.clk, 5)
         cocotb.start_soon(self.sink.run())
+        P.set_array_size(int(self.dut.N.value))   # this build's array size
 
     async def xfer(self, tx, n_rx):
         self.transfers += 1
@@ -113,7 +114,7 @@ async def ping(dut):
     tb = SystemTB(dut)
     await tb.start()
     info = P.dec_ping(await tb.xfer(P.enc_ping(), P.PING_REPLY_LEN))
-    assert info == {"n": 8, "max_m": 256, "version": P.PROTOCOL_VERSION}, info
+    assert info == {"n": int(dut.N.value), "max_m": 256, "version": P.PROTOCOL_VERSION}, info
 
 
 @cocotb.test()
@@ -128,14 +129,14 @@ async def unknown_command(dut):
 
 @cocotb.test()
 async def single_tile_and_cycle_count(dut):
-    """One 8x8 tile. Also pins down the cycle count: M rows take M + 2N cycles."""
+    """One N x N tile. Also pins down the cycle count: M rows take M + 2N cycles."""
     tb = SystemTB(dut)
     await tb.start()
     for m in (1, 2, 16, 64):
-        a = rand_int8(RNG, (m, 8))
-        w = rand_int8(RNG, (8, 8))
+        a = rand_int8(RNG, (m, P.N))
+        w = rand_int8(RNG, (P.N, P.N))
         _, st = await tb.matmul(a, w)
-        assert st.per_tile_cycles == [(m, m + 16)], st.per_tile_cycles
+        assert st.per_tile_cycles == [(m, m + 2 * P.N)], st.per_tile_cycles
 
 
 @cocotb.test()
@@ -154,8 +155,8 @@ async def run_overwrites(dut):
     """RUN replaces the output buffer; it does not add to the old result."""
     tb = SystemTB(dut)
     await tb.start()
-    a = rand_int8(RNG, (12, 8))
-    w = rand_int8(RNG, (8, 8))
+    a = rand_int8(RNG, (12, P.N))
+    w = rand_int8(RNG, (P.N, P.N))
     c1, _ = await tb.matmul(a, w)
     c2, _ = await tb.matmul(a, w)
     assert np.array_equal(c1, c2)
@@ -181,9 +182,9 @@ async def full_buffer_and_chunking(dut):
     """M = 256 fills the buffers exactly; M = 300 must be split into 2 chunks."""
     tb = SystemTB(dut)
     await tb.start()
-    _, st = await tb.matmul(rand_int8(RNG, (256, 8)), rand_int8(RNG, (8, 8)))
-    assert st.per_tile_cycles == [(256, 256 + 16)]
-    _, st = await tb.matmul(rand_int8(RNG, (300, 8)), rand_int8(RNG, (8, 8)))
+    _, st = await tb.matmul(rand_int8(RNG, (256, P.N)), rand_int8(RNG, (P.N, P.N)))
+    assert st.per_tile_cycles == [(256, 256 + 2 * P.N)]
+    _, st = await tb.matmul(rand_int8(RNG, (300, P.N)), rand_int8(RNG, (P.N, P.N)))
     assert [m for m, _ in st.per_tile_cycles] == [256, 44]
     dut._log.info(f"system total: {STATS['matmuls']} matmuls, {STATS['tiles']} tiles verified")
 
@@ -193,8 +194,8 @@ async def commands_back_to_back(dut):
     """Several commands sent in one burst without waiting for replies."""
     tb = SystemTB(dut)
     await tb.start()
-    w = rand_int8(RNG, (8, 8))
-    a = rand_int8(RNG, (6, 8))
+    w = rand_int8(RNG, (P.N, P.N))
+    a = rand_int8(RNG, (6, P.N))
     burst = P.enc_ping() + P.enc_load_w(w) + P.enc_load_a(a) + P.enc_run() + P.enc_read() + P.enc_ping()
     await tb.src.send(burst)
     n = P.PING_REPLY_LEN + P.RUN_REPLY_LEN + P.read_len(6) + P.PING_REPLY_LEN
@@ -212,8 +213,8 @@ async def bad_checksum_refuses_run(dut):
     """A corrupted LOAD makes RUN_ACC reply EC without touching the output buffer."""
     tb = SystemTB(dut)
     await tb.start()
-    w1, a1 = rand_int8(RNG, (8, 8)), rand_int8(RNG, (5, 8))
-    w2, a2 = rand_int8(RNG, (8, 8)), rand_int8(RNG, (5, 8))
+    w1, a1 = rand_int8(RNG, (P.N, P.N)), rand_int8(RNG, (5, P.N))
+    w2, a2 = rand_int8(RNG, (P.N, P.N)), rand_int8(RNG, (5, P.N))
     P.dec_run(await tb.xfer(P.enc_load_w(w1) + P.enc_load_a(a1) + P.enc_run(), P.RUN_REPLY_LEN))
 
     bad_w = bytearray(P.enc_load_w(w2))
@@ -232,7 +233,7 @@ async def lost_byte_times_out(dut):
     and the next tile computes correctly."""
     tb = SystemTB(dut)
     await tb.start()
-    w, a = rand_int8(RNG, (8, 8)), rand_int8(RNG, (4, 8))
+    w, a = rand_int8(RNG, (P.N, P.N)), rand_int8(RNG, (4, P.N))
     short = P.enc_load_a(a)[:-2]                    # lose the last data byte and the checksum
     await tb.src.send(P.enc_load_w(w) + short)
     await Timer(2 * tb.timeout_ns, unit="ns")

@@ -13,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        suite: [uart, uart25, fifo, pe, array, system, board]
+        suite: [uart, uart25, fifo, pe, array, array16, system, system16, board]
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
