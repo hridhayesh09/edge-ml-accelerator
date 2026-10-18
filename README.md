@@ -8,7 +8,9 @@ units** running on a Terasic DE10-Lite (Intel MAX 10) at 50 MHz.
 It runs a complete MNIST digit classifier on the FPGA: the laptop sends an image over a serial
 link and gets the digit back. The weights live in on-chip memory, and every layer, the
 requantization in between and the final argmax run in hardware, matching NumPy bit for bit.
-It can also act as a general INT8 matrix-multiply engine.
+It can also act as a general INT8 matrix-multiply engine, and it runs a **standalone demo**
+with no laptop at all: 98 test images stored on the chip, picked with the switches, answers on
+the 7-segment displays.
 
 ```
 Laptop --image (784 bytes)--> DE10-Lite --digit (1 byte)--> Laptop
@@ -32,23 +34,24 @@ All numbers below come from simulation, Quartus reports, or runs on the real boa
 | MNIST end-to-end time | **3.94 ms per image** (first version: 665 ms, 169x slower) |
 | One image, send to digit | 4.6 ms |
 | MNIST compute time | **12.5 us per image** (both layers, requantize, argmax) |
+| Standalone demo (no laptop) | **97/98 right, 3.2 ms for all 98 images = 33 us per image** |
 
 **FPGA build (Quartus Prime Lite 25.1)**
 
 | | |
 | --- | --- |
 | Processing elements | **256** (16x16), 25.6 GOPS peak |
-| Max clock (Fmax) | **66.92 MHz** (runs at 50 MHz) |
-| Logic elements | 29,534 of 49,760 (59%) |
+| Max clock (Fmax) | **63.34 MHz** (runs at 50 MHz) |
+| Logic elements | 30,977 of 49,760 (62%) |
 | Hardware multipliers | 132 of 288: 128 PEs + requantize; the other 128 PEs use logic multipliers |
-| Memory blocks (M9K) | 152 of 182 (weights, image buffer) |
-| Power | 443 mW (Quartus estimate) |
+| Memory blocks (M9K) | 169 of 182 (weights, image buffer, demo images) |
+| Power | 484 mW (Quartus estimate) |
 
 **Simulation**
 
 | | |
 | --- | --- |
-| Tests | 52 tests in 9 suites (8x8 and 16x16 builds), all passing |
+| Tests | 55 tests in 10 suites (8x8 and 16x16 builds, plus the board demo), all passing |
 | Random matrix products checked | 1,100+ bit-exact with NumPy |
 | MNIST accuracy (10,000 images) | float32 97.68%, INT8 97.67% |
 | Peak throughput | 25.6 GOPS (256 MACs x 2 ops x 50 MHz) |
@@ -57,9 +60,22 @@ All numbers below come from simulation, Quartus reports, or runs on the real boa
 
 | Platform | Compute time | GOPS | Power | GOPS/W |
 | --- | --- | --- | --- | --- |
-| DE10-Lite FPGA | 0.80 ms (whole network) | 8.15 | 443 mW (estimate) | 18.4 |
+| DE10-Lite FPGA | 0.80 ms (whole network) | 8.15 | 484 mW (estimate) | 16.8 |
 | Raspberry Pi | _TBD_ | _TBD_ | _TBD_ | _TBD_ |
 | NVIDIA Jetson | _TBD_ | _TBD_ | _TBD_ | _TBD_ |
+
+## Standalone demo
+
+No laptop needed. 98 MNIST test images are stored on the chip (compressed, 16 KB):
+
+- **SW9 down:** SW6-SW0 pick an image, HEX5-4 show its number. Press **KEY1**: HEX2 shows the
+  true digit, HEX0 the board's answer, and LEDR5/LEDR6 light for right/wrong.
+- **SW9 up:** press **KEY1** to classify all 98. The displays show **097 098** (right / total);
+  flip **SW8** to see the time for the whole run in microseconds (**3223**).
+- It can also be run over the USB-Blaster cable: `python host/demo_jtag.py all`.
+
+The one image it gets wrong (number 96, a 1 read as a 9) is a genuine mistake of the network,
+not of the hardware: NumPy makes the same call.
 
 ## How it works
 
@@ -77,8 +93,11 @@ All numbers below come from simulation, Quartus reports, or runs on the real boa
 - **Serial link:** 2 Mbaud UART (exactly 25 clocks per bit) with FIFOs in both directions. Every transfer carries a
   checksum; a corrupted or lost byte is detected, and the host resyncs and retries the tile. An
   ESP32-S3 dev board is used as the USB-to-serial bridge.
+- **Standalone mode:** a small controller inside the chip plays the role of the laptop: it feeds
+  stored, compressed images to the accelerator through the same command interface the UART
+  uses, and reads the answers back.
 - **Verification:** every module is tested with cocotb against NumPy, including the full design
-  driven through its UART pins.
+  driven through its UART pins and the exact board build driven through its switches and button.
 
 More detail in [docs/how_it_works.md](docs/how_it_works.md).
 

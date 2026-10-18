@@ -30,6 +30,7 @@ RTL_CORE = [
     RTL / "systolic_array.v",
     RTL / "sdp_ram.v",
     RTL / "rom.v",
+    RTL / "demo.v",
     RTL / "accel_core.v",
     RTL / "accel_top.v",
     RTL / "de10lite_top.v",
@@ -49,6 +50,8 @@ SUITES = {
     "system16": ("accel_top",    [],                 {"CLKS_PER_BIT": 8, "N": 16, "MAX_M": 256, "RX_TIMEOUT": 3000, "MODEL_DIR": MODEL_DIR}, "test_system",
                  "ping|single_tile|commands_back|bad_checksum|infer_"),
     "board":  ("tb_board",       [TB / "tb_board.v"], {"MODEL_DIR": MODEL_DIR}, "test_board"),
+    # the standalone demo on the exact board build (KEY1/switches -> HEX displays)
+    "demo":   ("tb_board",       [TB / "tb_board.v"], {"MODEL_DIR": MODEL_DIR}, "test_demo"),
 }
 
 

@@ -1,0 +1,13 @@
+Standalone demo on the DE10-Lite (16x16, 50 MHz), triggered over JTAG with host/demo_jtag.py
+2026-10-18 17:02 UTC
+--- run all
+run all: 97/98 right (99.0%), 3223 us for the whole run (32.9 us per image), accelerator compute 1410 us
+--- single images
+image 3: true digit 0, board says 0 (right)
+run all: 97/98 right (99.0%), 3223 us for the whole run (32.9 us per image), accelerator compute 1410 us
+image 42: true digit 4, board says 4 (right)
+run all: 97/98 right (99.0%), 3223 us for the whole run (32.9 us per image), accelerator compute 1410 us
+image 96: true digit 1, board says 9 (WRONG)
+run all: 97/98 right (99.0%), 3223 us for the whole run (32.9 us per image), accelerator compute 1410 us
+--- run-all result read back after the singles (must be unchanged)
+run all: 97/98 right (99.0%), 3223 us for the whole run (32.9 us per image), accelerator compute 1410 us

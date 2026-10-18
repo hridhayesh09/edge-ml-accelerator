@@ -30,6 +30,8 @@ HEX_1 = 0b11111001      # "1" on an active-low 7-segment display
 async def board_ping_and_matmul(dut):
     Clock(dut.clk, 20, unit="ns", impl="gpi").start()
     dut.key0_n.value = 1
+    dut.key1_n.value = 1
+    dut.sw.value = 0
     src = UartSource(dut.uart_rx, BIT_NS)
     sink = UartSink(dut.uart_tx, BIT_NS)
     await ClockCycles(dut.clk, 40)          # power-on reset finishes
@@ -62,6 +64,8 @@ async def board_ping_and_matmul(dut):
     dut.key0_n.value = 0
     await ClockCycles(dut.clk, 10)
     dut.key0_n.value = 1
+    dut.key1_n.value = 1
+    dut.sw.value = 0
     await ClockCycles(dut.clk, 10)
     await ReadOnly()
     assert int(dut.hex0.value) == 0b11000000, "reset did not clear the counter"
@@ -74,6 +78,8 @@ async def board_infer_one_image(dut):
     P.set_array_size(16)
     Clock(dut.clk, 20, unit="ns", impl="gpi").start()
     dut.key0_n.value = 1
+    dut.key1_n.value = 1
+    dut.sw.value = 0
     src = UartSource(dut.uart_rx, BIT_NS)
     sink = UartSink(dut.uart_tx, BIT_NS)
     await ClockCycles(dut.clk, 40)

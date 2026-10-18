@@ -78,7 +78,8 @@ module accel_core #(
     output reg        tx_wr,
 
     output wire       busy,
-    output wire       cmd_error
+    output wire       cmd_error,
+    output wire       idle            // waiting for a command (safe to switch byte sources)
 );
     localparam MW = $clog2(MAX_M);
     localparam NN = N * N;
@@ -425,6 +426,7 @@ module accel_core #(
     end
 
     assign busy      = (state == S_FEED || state == S_DRAIN) || engine;
+    assign idle      = (state == S_IDLE);
     assign cmd_error = err_flag;
 
     // ------------------------------------------------------------------

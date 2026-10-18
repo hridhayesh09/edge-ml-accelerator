@@ -10,4 +10,4 @@ set_false_path -from [get_ports {KEY[*] SW[*] ARDUINO_IO[0]}]
 
 # Outputs drive LEDs and a 115200-baud serial line; nanosecond-level output
 # timing does not matter for them.
-set_false_path -to [get_ports {LEDR[*] HEX0[*] HEX1[*] ARDUINO_IO[*]}]
+set_false_path -to [get_ports {LEDR[*] HEX*[*] ARDUINO_IO[*]}]

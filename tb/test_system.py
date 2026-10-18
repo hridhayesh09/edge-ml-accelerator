@@ -39,6 +39,9 @@ class SystemTB:
 
     async def start(self):
         Clock(self.dut.clk, CLK_NS, unit="ns", impl="gpi").start()
+        self.dut.demo_active.value = 0       # the standalone demo isn't used here
+        self.dut.demo_empty.value = 1
+        self.dut.demo_data.value = 0
         self.dut.rst.value = 1
         await ClockCycles(self.dut.clk, 5)
         self.dut.rst.value = 0

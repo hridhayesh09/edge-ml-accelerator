@@ -12,6 +12,8 @@ files are in [results/](../results/).
 | 5. CI | GitHub Actions runs every test on each push | green badge on the README |
 | 6. Whole network on the FPGA | weights in on-chip ROM, requantize/ReLU/argmax in hardware | **3.95 ms/image**, 97.67% on all 10,000 test images, bit-exact |
 | 7. 16x16 array | 256 PEs, half with logic multipliers to fit the DSP blocks | **22.8 GOPS** matmul (3.8x), MNIST compute 12.5 us/image (2x) |
+| 8. Compressed images | zero-run compression on the serial link (INFER_RLE) | 4.4x fewer bytes per image |
+| 9. Standalone demo | 98 images stored on chip, switches + button, no laptop | **97/98 in 3.2 ms = 33 us/image** (120x faster than over the link) |
 
 ## 1. Simulation (before the board arrived)
 
@@ -109,3 +111,31 @@ the network itself takes 25 us per image.
 End-to-end MNIST time didn't move: 99.7% of it is sending 784 bytes over the serial link. The
 bigger array matters for compute-heavy work (matmuls, bigger batches); for single images the
 next bottleneck is the link itself.
+
+## 8. Sending fewer bytes: compressed images
+
+- The serial link is 99.7% of end-to-end time. MNIST digits are about 80% blank background, so
+  runs of zeros are sent as one byte (top bit set, length in the low 7 bits) and the board
+  expands them while receiving. Images average 178 bytes instead of 784 (4.4x smaller, lossless).
+- Also tried raising the baud rate above 2 Mbaud. The bridge chip and the FPGA can only both hit
+  2 Mbaud exactly, and a test at 3.125 Mbaud hung the bridge's Windows driver (bug #6), so the
+  link stays at 2 Mbaud.
+- End-to-end time with compression is still to be measured on the board (the serial port has to
+  be re-plugged first after bug #6).
+
+## 9. Standalone demo (no laptop)
+
+- 98 MNIST test images, compressed, fill 16 KB of the chip's spare block RAM.
+- A demo controller inside the FPGA acts like the laptop: it feeds an image (or a batch of 32) to
+  the accelerator through the same command interface the UART uses and reads the answer back.
+- Switches pick an image, KEY1 classifies it, the 7-segment displays show the true digit and the
+  prediction. With SW9 up, KEY1 classifies all 98 and shows right/total and the time.
+- It can also be started and read back over the USB-Blaster cable (`host/demo_jtag.py`), which is
+  how it was tested remotely.
+
+| Measurement (on the board) | Result |
+| --- | --- |
+| Accuracy on the 98 stored images | 97/98 (image 96: a 1 read as a 9, same as NumPy) |
+| All 98 images, start to finish | 3,223 us = 32.9 us per image |
+| ...of which the network itself | 1,410 us (the rest is expanding the compressed images) |
+| vs. one image over the serial link | 3.94 ms, so 120x faster on the chip by itself |

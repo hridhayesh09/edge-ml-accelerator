@@ -152,6 +152,19 @@ python bench_edge.py --batch 64 --loop 30
 Perf per watt = GOPS / watts. Compare like with like: the FPGA's "hardware compute" GOPS against
 each device's compute-only GOPS from `bench_edge.py`.
 
+## Standalone demo
+
+Once the accelerator is loaded, the board works without the laptop:
+
+1. **SW9 down**, pick an image 0-97 with SW6-SW0 (HEX5-4 show the number), press **KEY1**.
+   HEX2 = true digit, HEX0 = the board's answer, LEDR5 = right, LEDR6 = wrong.
+2. **SW9 up**, press **KEY1**: all 98 images. Displays show right/total (097 098). Flip **SW8**
+   to see the time in microseconds.
+3. Without touching the board: `python host/demo_jtag.py all` (or `one 96`) runs the same thing
+   over the USB-Blaster cable and prints the results.
+
+Remember: loading over JTAG is temporary, so after unplugging the board, load the .sof again.
+
 ## Serial speed
 
 The design runs at 2,000,000 baud (`parameter BAUD` in `rtl/de10lite_top.v`; the host scripts

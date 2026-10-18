@@ -1,12 +1,12 @@
-Power Analyzer Status : Successful - Sun Oct 18 10:41:15 2026
+Power Analyzer Status : Successful - Sun Oct 18 13:03:11 2026
 Quartus Prime Version : 25.1std.0 Build 1129 10/21/2025 SC Lite Edition
 Revision Name : edge_ml_accel
 Top-level Entity Name : de10lite_top
 Family : MAX 10
 Device : 10M50DAF484C7G
 Power Models : Final
-Total Thermal Power Dissipation : 442.69 mW
-Core Dynamic Thermal Power Dissipation : 271.94 mW
-Core Static Thermal Power Dissipation : 91.56 mW
-I/O Thermal Power Dissipation : 79.19 mW
+Total Thermal Power Dissipation : 484.24 mW
+Core Dynamic Thermal Power Dissipation : 284.61 mW
+Core Static Thermal Power Dissipation : 91.76 mW
+I/O Thermal Power Dissipation : 107.87 mW
 Power Estimation Confidence : Low: user provided insufficient toggle rate data

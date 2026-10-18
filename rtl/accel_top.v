@@ -25,7 +25,17 @@ module accel_top #(
     output wire busy,
     output wire rx_pulse,
     output wire tx_pulse,
-    output wire err_pulse
+    output wire err_pulse,
+
+    // standalone demo (demo.v): while demo_active, the core reads its bytes
+    // from the demo instead of the UART, and its replies go to the demo
+    output wire       core_free,     // core idle and no UART bytes waiting
+    input  wire       demo_active,
+    input  wire       demo_empty,
+    input  wire [7:0] demo_data,
+    output wire       demo_rd,
+    output wire [7:0] reply_data,
+    output wire       demo_reply_wr
 );
     // receive path
     wire [7:0] rx_byte;
@@ -39,6 +49,7 @@ module accel_top #(
 
     wire       rxf_empty, rxf_full, rxf_rd;
     wire [7:0] rxf_dout;
+    wire       core_rd;
 
     sync_fifo #(.WIDTH(8), .DEPTH(FIFO_DEPTH)) u_rx_fifo (
         .clk(clk), .rst(rst),
@@ -51,13 +62,24 @@ module accel_top #(
     wire       core_tx_wr;
     wire       txf_full;
     wire       core_err;
+    wire       core_idle;
+
+    // byte-source switch: UART (normal) or the standalone demo
+    assign rxf_rd        = core_rd && !demo_active;
+    assign demo_rd       = core_rd &&  demo_active;
+    assign core_free     = core_idle && rxf_empty;
+    assign reply_data    = core_tx_data;
+    assign demo_reply_wr = core_tx_wr && demo_active;
 
     accel_core #(.N(N), .MAX_M(MAX_M), .RX_TIMEOUT(RX_TIMEOUT), .MAX_IMG(MAX_IMG),
                  .MODEL_DIR(MODEL_DIR)) u_core (
         .clk(clk), .rst(rst),
-        .rx_empty(rxf_empty), .rx_data(rxf_dout), .rx_rd(rxf_rd),
-        .tx_full(txf_full), .tx_data(core_tx_data), .tx_wr(core_tx_wr),
-        .busy(busy), .cmd_error(core_err)
+        .rx_empty(demo_active ? demo_empty : rxf_empty),
+        .rx_data (demo_active ? demo_data  : rxf_dout),
+        .rx_rd   (core_rd),
+        .tx_full (demo_active ? 1'b0 : txf_full),
+        .tx_data (core_tx_data), .tx_wr(core_tx_wr),
+        .busy(busy), .cmd_error(core_err), .idle(core_idle)
     );
 
     // transmit path
@@ -68,7 +90,7 @@ module accel_top #(
 
     sync_fifo #(.WIDTH(8), .DEPTH(FIFO_DEPTH)) u_tx_fifo (
         .clk(clk), .rst(rst),
-        .wr_en(core_tx_wr), .din(core_tx_data), .full(txf_full),
+        .wr_en(core_tx_wr && !demo_active), .din(core_tx_data), .full(txf_full),
         .rd_en(tx_start), .dout(txf_dout), .empty(txf_empty)
     );
 

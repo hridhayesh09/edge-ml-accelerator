@@ -24,6 +24,7 @@ set_global_assignment -name VERILOG_FILE ../rtl/pe.v
 set_global_assignment -name VERILOG_FILE ../rtl/systolic_array.v
 set_global_assignment -name VERILOG_FILE ../rtl/sdp_ram.v
 set_global_assignment -name VERILOG_FILE ../rtl/rom.v
+set_global_assignment -name VERILOG_FILE ../rtl/demo.v
 set_global_assignment -name VERILOG_FILE ../rtl/accel_core.v
 set_global_assignment -name VERILOG_FILE ../rtl/accel_top.v
 set_global_assignment -name VERILOG_FILE ../rtl/de10lite_top.v
@@ -85,6 +86,40 @@ set_location_assignment PIN_A17 -to HEX1[4]
 set_location_assignment PIN_A18 -to HEX1[5]
 set_location_assignment PIN_B17 -to HEX1[6]
 set_location_assignment PIN_A16 -to HEX1[7]
+
+# HEX2-HEX5 (standalone demo), from Terasic's DE10_LITE_Golden_Top
+set_location_assignment PIN_B20 -to HEX2[0]
+set_location_assignment PIN_A20 -to HEX2[1]
+set_location_assignment PIN_B19 -to HEX2[2]
+set_location_assignment PIN_A21 -to HEX2[3]
+set_location_assignment PIN_B21 -to HEX2[4]
+set_location_assignment PIN_C22 -to HEX2[5]
+set_location_assignment PIN_B22 -to HEX2[6]
+set_location_assignment PIN_A19 -to HEX2[7]
+set_location_assignment PIN_F21 -to HEX3[0]
+set_location_assignment PIN_E22 -to HEX3[1]
+set_location_assignment PIN_E21 -to HEX3[2]
+set_location_assignment PIN_C19 -to HEX3[3]
+set_location_assignment PIN_C20 -to HEX3[4]
+set_location_assignment PIN_D19 -to HEX3[5]
+set_location_assignment PIN_E17 -to HEX3[6]
+set_location_assignment PIN_D22 -to HEX3[7]
+set_location_assignment PIN_F18 -to HEX4[0]
+set_location_assignment PIN_E20 -to HEX4[1]
+set_location_assignment PIN_E19 -to HEX4[2]
+set_location_assignment PIN_J18 -to HEX4[3]
+set_location_assignment PIN_H19 -to HEX4[4]
+set_location_assignment PIN_F19 -to HEX4[5]
+set_location_assignment PIN_F20 -to HEX4[6]
+set_location_assignment PIN_F17 -to HEX4[7]
+set_location_assignment PIN_J20 -to HEX5[0]
+set_location_assignment PIN_K20 -to HEX5[1]
+set_location_assignment PIN_L18 -to HEX5[2]
+set_location_assignment PIN_N18 -to HEX5[3]
+set_location_assignment PIN_M20 -to HEX5[4]
+set_location_assignment PIN_N19 -to HEX5[5]
+set_location_assignment PIN_N20 -to HEX5[6]
+set_location_assignment PIN_L19 -to HEX5[7]
 
 # ---------------------------------------------------------------- Arduino header
 # IO0 = UART RX into the FPGA, IO1 = UART TX out of the FPGA

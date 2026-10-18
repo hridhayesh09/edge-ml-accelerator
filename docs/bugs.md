@@ -126,3 +126,14 @@ Format: **symptom → cause → fix → lesson**.
 - **Lessons:** make test scripts fail loudly when a setup step fails, because silent setup
   failures produce convincing-looking wrong results. And probe unusual settings on hardware
   carefully: a driver can wedge in a way only a replug fixes.
+
+### 7. Standalone demo: run-all totals kept counting after single images
+- **Symptom:** on the board (read back over JTAG), after a run-all showed 97/98, each single-image
+  press changed it: 98/99, then 99/100, ...
+- **Cause:** the demo controller added every classification to the run-all counters, including
+  single-image ones.
+- **Fix:** only run-all updates the right/total/time counters. A new simulation test classifies a
+  single image after a run-all and checks the totals don't move.
+- **Lesson:** reading results back from the real hardware (here over JTAG) catches things a test
+  that only checks one scenario at a time misses. Test sequences of actions, not just each
+  action alone.
