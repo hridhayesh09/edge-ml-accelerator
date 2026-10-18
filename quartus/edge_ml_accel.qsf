@@ -101,3 +101,5 @@ set_location_assignment PIN_AA20 -to ARDUINO_IO[15]
 
 # Weak pull-up on the RX pin so it idles high if the adapter is unplugged
 set_instance_assignment -name WEAK_PULL_UP_RESISTOR ON -to ARDUINO_IO[0]
+
+set_global_assignment -name LAST_QUARTUS_VERSION "25.1std.0 Lite Edition"

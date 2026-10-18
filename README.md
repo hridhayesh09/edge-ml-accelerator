@@ -41,15 +41,15 @@ Laptop (Python) --USB serial, 115200 baud--> DE10-Lite
 | MNIST test accuracy (10,000 images) | float32 **97.68%**, INT8 **97.67%** |
 | Simulation tests | **26 tests in 6 suites, all passing**; 1,100+ random matrix products checked bit-for-bit against NumPy |
 
-### Measured on the board (fill in during bring-up, see docs/bringup.md)
+### Measured on the board (Quartus Prime Lite 25.1; UART rows fill in during bring-up, see docs/bringup.md)
 
 | Metric | Value |
 | --- | --- |
-| Fmax (Slow 1200mV 85C) | _TBD_ MHz (runs at 50 MHz) |
-| Logic elements | _TBD_ / 49,760 |
-| 9-bit multiplier elements | _TBD_ / 288 |
-| M9K memory blocks | _TBD_ / 182 |
-| Estimated power (Quartus Power Analyzer) | _TBD_ mW |
+| Fmax (Slow 1200mV 85C) | **85.08 MHz** (runs at 50 MHz; setup slack +8.246 ns) |
+| Logic elements | **3,331** / 49,760 (7%) |
+| 9-bit multiplier elements | **64** / 288 (22%), one per PE |
+| M9K memory blocks | **21** / 182 (12%) |
+| Estimated power (Quartus Power Analyzer) | **225 mW** total (core dynamic 56, core static 91, I/O 79); vectorless estimate at 12.5% toggle rate, low confidence |
 | MNIST bit-exact vs NumPy | _TBD_ |
 | MNIST compute time per image | _TBD_ us |
 | MNIST end-to-end time per image (UART) | _TBD_ ms |

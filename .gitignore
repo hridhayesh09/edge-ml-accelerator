@@ -23,3 +23,6 @@ host/data/
 
 # Python virtual environment
 .venv/
+
+# local bitstream copies
+build/
