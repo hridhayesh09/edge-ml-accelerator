@@ -1,5 +1,7 @@
 # Edge ML Accelerator on FPGA
 
+[![tests](https://github.com/hridhayesh09/edge-ml-accelerator/actions/workflows/tests.yml/badge.svg)](https://github.com/hridhayesh09/edge-ml-accelerator/actions/workflows/tests.yml)
+
 A small TPU-style matrix engine in Verilog: an **8x8 systolic array of INT8 multiply-accumulate
 units** running on a Terasic DE10-Lite (Intel MAX 10) at 50 MHz.
 
@@ -107,3 +109,4 @@ python mnist_fpga.py --port COM8 --num 64
 - [Protocol](docs/protocol.md)
 - [Board bring-up](docs/bringup.md)
 - [Bug log](docs/bugs.md)
+- [Progress log](docs/progress.md): what each step changed, with before/after numbers
