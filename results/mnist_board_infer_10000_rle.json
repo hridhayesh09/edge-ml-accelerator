@@ -1,0 +1,17 @@
+{
+  "mode": "infer (compressed)",
+  "bit_exact": true,
+  "compute_time_s": 0.1248,
+  "compute_us_per_image": 12.479999999999999,
+  "wall_time_s": 10.66366169997491,
+  "wall_ms_per_image": 1.066366169997491,
+  "single_image_latency_ms": 1.989399956073612,
+  "batches": 313,
+  "retries": 0,
+  "images": 10000,
+  "accuracy_fpga": 0.9767,
+  "accuracy_int8_numpy": 0.9767,
+  "accuracy_float32": 0.9768,
+  "uart_share_of_wall": 0.988296702998343,
+  "clock_hz": 50000000
+}

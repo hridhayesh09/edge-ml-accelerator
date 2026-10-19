@@ -12,8 +12,8 @@ files are in [results/](../results/).
 | 5. CI | GitHub Actions runs every test on each push | green badge on the README |
 | 6. Whole network on the FPGA | weights in on-chip ROM, requantize/ReLU/argmax in hardware | **3.95 ms/image**, 97.67% on all 10,000 test images, bit-exact |
 | 7. 16x16 array | 256 PEs, half with logic multipliers to fit the DSP blocks | **22.8 GOPS** matmul (3.8x), MNIST compute 12.5 us/image (2x) |
-| 8. Compressed images | zero-run compression on the serial link (INFER_RLE) | 4.4x fewer bytes per image |
-| 9. Standalone demo | 98 images stored on chip, switches + button, no laptop | **97/98 in 3.2 ms = 33 us/image** (120x faster than over the link) |
+| 8. Compressed images | zero-run compression on the serial link (INFER_RLE) | **1.07 ms/image** end to end (3.7x), **621x faster than the first version** |
+| 9. Standalone demo | 98 images stored on chip, switches + button, no laptop | **97/98 in 3.2 ms = 33 us/image** (no serial link at all) |
 
 ## 1. Simulation (before the board arrived)
 
@@ -120,8 +120,16 @@ next bottleneck is the link itself.
 - Also tried raising the baud rate above 2 Mbaud. The bridge chip and the FPGA can only both hit
   2 Mbaud exactly, and a test at 3.125 Mbaud hung the bridge's Windows driver (bug #6), so the
   link stays at 2 Mbaud.
-- End-to-end time with compression is still to be measured on the board (the serial port has to
-  be re-plugged first after bug #6).
+- Measured on the board, all 10,000 test images, same session, both bit-exact at 97.67%:
+
+| Measurement | Raw images (INFER) | Compressed (INFER_RLE) | Change |
+| --- | --- | --- | --- |
+| Per image, end to end | 3.95 ms | **1.07 ms** | 3.7x faster |
+| One image, send to digit | 4.73 ms | **1.99 ms** | 2.4x faster |
+| All 10,000 images | 39.5 s | 10.7 s | |
+| vs. the very first version (665 ms) | | | **621x faster** |
+
+The link is still 98.8% of the time; the network itself is 12.5 us per image.
 
 ## 9. Standalone demo (no laptop)
 
@@ -138,4 +146,4 @@ next bottleneck is the link itself.
 | Accuracy on the 98 stored images | 97/98 (image 96: a 1 read as a 9, same as NumPy) |
 | All 98 images, start to finish | 3,223 us = 32.9 us per image |
 | ...of which the network itself | 1,410 us (the rest is expanding the compressed images) |
-| vs. one image over the serial link | 3.94 ms, so 120x faster on the chip by itself |
+| vs. one image over the serial link | 1.07 ms compressed (3.95 ms raw), so 33x faster on the chip by itself |

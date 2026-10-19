@@ -27,20 +27,21 @@ MODEL = Path(__file__).resolve().parent / "mnist_int8.npz"
 
 
 def run_infer(acc, x, ref_acc2, args):
-    digits, logits, st = acc.infer(x, with_logits=True)
+    compress = not args.no_compress
+    digits, logits, st = acc.infer(x, with_logits=True, compress=compress)
     # single-image latency: one image in, one digit out (logits not read back)
     lat = []
     for i in range(args.latency_runs):
         t0 = time.perf_counter()
-        acc.infer(x[i % len(x):i % len(x) + 1])
+        acc.infer(x[i % len(x):i % len(x) + 1], compress=compress)
         lat.append(time.perf_counter() - t0)
     # end-to-end throughput: the whole set again, digits only (what a user would do)
     t0 = time.perf_counter()
-    acc.infer(x)
+    acc.infer(x, compress=compress)
     wall = time.perf_counter() - t0
     compute_s = st["compute_time_s"]
     return {
-        "mode": "infer",
+        "mode": "infer (compressed)" if compress else "infer (raw)",
         "bit_exact": bool(np.array_equal(logits, ref_acc2)),
         "pred": digits,
         "compute_time_s": compute_s,
@@ -87,6 +88,7 @@ def main():
     ap.add_argument("--num", type=int, default=1000, help="test images to run")
     ap.add_argument("--mode", choices=["infer", "matmul"], default="infer")
     ap.add_argument("--latency-runs", type=int, default=50, help="single-image runs to time (infer mode)")
+    ap.add_argument("--no-compress", action="store_true", help="send raw 784-byte images (INFER, not INFER_RLE)")
     ap.add_argument("--json", help="write results to this file")
     args = ap.parse_args()
 

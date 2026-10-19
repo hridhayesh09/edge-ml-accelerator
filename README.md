@@ -31,8 +31,8 @@ All numbers below come from simulation, Quartus reports, or runs on the real boa
 | --- | --- |
 | Matrix products | all bit-exact with NumPy (up to 256x256x64), **22.8 GOPS** at 89% utilization |
 | MNIST accuracy on the board | **97.67% on all 10,000 test images**, every logit bit-exact with NumPy |
-| MNIST end-to-end time | **3.94 ms per image** (first version: 665 ms, 169x slower) |
-| One image, send to digit | 4.6 ms |
+| MNIST end-to-end time | **1.07 ms per image** with compressed images (first version: 665 ms, 621x slower) |
+| One image, send to digit | 2.0 ms |
 | MNIST compute time | **12.5 us per image** (both layers, requantize, argmax) |
 | Standalone demo (no laptop) | **97/98 right, 3.2 ms for all 98 images = 33 us per image** |
 
