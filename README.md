@@ -56,14 +56,6 @@ All numbers below come from simulation, Quartus reports, or runs on the real boa
 | MNIST accuracy (10,000 images) | float32 97.68%, INT8 97.67% |
 | Peak throughput | 25.6 GOPS (256 MACs x 2 ops x 50 MHz) |
 
-**Edge comparison (same MNIST network, batch of 64)**
-
-| Platform | Compute time | GOPS | Power | GOPS/W |
-| --- | --- | --- | --- | --- |
-| DE10-Lite FPGA | 0.80 ms (whole network) | 8.15 | 484 mW (estimate) | 16.8 |
-| Raspberry Pi | _TBD_ | _TBD_ | _TBD_ | _TBD_ |
-| NVIDIA Jetson | _TBD_ | _TBD_ | _TBD_ | _TBD_ |
-
 ## Standalone demo
 
 No laptop needed. 98 MNIST test images are stored on the chip (compressed, 16 KB):
@@ -106,7 +98,7 @@ More detail in [docs/how_it_works.md](docs/how_it_works.md).
 ```
 rtl/        Verilog source (PE, systolic array, controller, UART, FIFOs)
 tb/         cocotb testbenches
-host/       Python driver, demos, MNIST training, edge benchmark
+host/       Python driver, demos, MNIST training
 quartus/    Quartus project, pins, timing constraints
 boardtest/  self-test design for checking the DE10-Lite board
 docs/       protocol, bring-up guide, design notes, bug log

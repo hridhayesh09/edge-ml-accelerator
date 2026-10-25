@@ -132,26 +132,6 @@ link takes most of the time.
 
 This is an estimate using a default 12.5% signal toggle rate, so say "estimated" when you quote it.
 
-## Step 9: Raspberry Pi and Jetson baselines (ask your PI first)
-
-Copy the `host/` folder to the device (it only needs NumPy; PyTorch is used if it's installed), then:
-
-```
-python bench_edge.py --batch 64 --json pi_results.json
-```
-
-For power, start the script in loop mode and read the meter while it runs:
-
-```
-python bench_edge.py --batch 64 --loop 30
-```
-
-- Jetson: in a second terminal run `tegrastats` and note the total input power (VDD_IN).
-- Raspberry Pi: put a USB-C power meter between the power supply and the Pi.
-
-Perf per watt = GOPS / watts. Compare like with like: the FPGA's "hardware compute" GOPS against
-each device's compute-only GOPS from `bench_edge.py`.
-
 ## Standalone demo
 
 Once the accelerator is loaded, the board works without the laptop:
